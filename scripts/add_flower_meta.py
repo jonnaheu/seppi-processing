@@ -50,7 +50,6 @@ def main():
             continue
 
         # Find the correct cam_ID: look for the first folder directly under INPUT_DIR
-        # that matches "seppi-camXXX"
         cam_id = "unknown"
         parent = json_file.parent
 
@@ -73,7 +72,7 @@ def main():
             print(f"Error reading {json_file}: {e}")
             continue
 
-        # Extract only the fields you want
+        # Extract only the fields you want (excluding deployment.notes)
         row = {
             'filename': json_file.name,
             'date_time': date_time_str,
@@ -84,7 +83,6 @@ def main():
         deployment = data.get("deployment", {})
         row['deployment_start'] = deployment.get("start")
         row['deployment_setting'] = deployment.get("setting")
-        row['deployment_notes'] = deployment.get("notes")
 
         # Extract location
         location = deployment.get("location", {})
@@ -101,19 +99,18 @@ def main():
 
         all_rows.append(row)
 
-    # Write to CSV with full quoting
+    # Write to CSV with full protection
     if not all_rows:
         print("No matching JSON files found.")
         return
 
-    # Define the exact fieldnames in order
+    # Define the exact fieldnames in order 
     fieldnames = [
         'filename',
         'date_time',
         'cam_ID',
         'deployment_start',
         'deployment_setting',
-        'deployment_notes',
         'location_latitude',
         'location_longitude',
         'location_accuracy',
@@ -122,16 +119,24 @@ def main():
         'lens_position_max'
     ]
 
-    # ✅ CRITICAL: Use QUOTE_ALL to prevent newline/column issues
+    # ✅ CRITICAL: Use QUOTE_ALL + Unix line endings
     try:
         with open(OUTPUT_CSV, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+            # Use QUOTE_ALL to wrap every field in quotes
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL, lineterminator='\n')
             writer.writeheader()
             writer.writerows(all_rows)
         print(f"\n✅ Successfully merged {len(all_rows)} files into '{OUTPUT_CSV}'")
-        print("All fields are properly quoted to prevent row/column corruption.")
+    except PermissionError:
+        print(f"\n❌ Permission denied: Cannot write to '{OUTPUT_CSV}'")
+        print("💡 Try:")
+        print("  - Close any programs using this file")
+        print("  - Run the script as Administrator")
+        print("  - Use a different output path (e.g., Desktop)")
+        return
     except Exception as e:
         print(f"Error writing CSV: {e}")
+        return
 
 # -----------------------------
 # Run the script
