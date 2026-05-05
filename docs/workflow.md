@@ -1,4 +1,4 @@
-# Workflow to aggregatea and filter metadata files and validate classification results from the post-processing pipeline using BioCLIP2 classifier
+# Workflow to aggregate and filter metadata files and validate classification results from the post-processing pipeline using BioCLIP2 classifier
 
 This script serves to test and explore the results obtained from SEPPI post-processing pipeline that classifies the captured flower visitor images.
 
