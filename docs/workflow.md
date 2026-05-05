@@ -34,64 +34,48 @@ Run
 pip install -r requirements.txt
 ```
 
-### 1. **merge_meta.py**: Find, load, and merge all metadata files 
+### 1. **merge_meta_and_flower.py**: Find, load, and merge all metadata files 
 
-`merge_meta.py` recursively searches the processed data directory for metadata CSV files matching a given filename pattern (e.g. with suffix: `"[...]metadata_merged_crops_classified.csv"`), merges them into a single output CSV, and optionally appends file- and folder-derived metadata columns. The script reports the number of processed files, total rows (detections), and runtime.
+`merge_meta_and_flower.py` recursively searches the raw and processed data directory for config json files and metadata CSV files matching a given filename pattern (e.g. with suffix: `"[...]metadata_merged_crops_classified.csv"`), merges them into a single output CSV, and appends source-file paths and plant species information in additional columns. The script reports the number of processed files and total rows (detections).
+The scripts performs three key steps in sequence:
+1. Merges all JSON configuration files (YYYY-MM-DD_hh-mm-ss_config_seppi_flower.json) into a single merged_config_seppi_flower.csv
+2. Merges all processed metadata CSVs (e.g., *metadata_merged_crops_classified.csv) into memory (no temporary file)
+3. Joins the plant_species column from the config file to the metadata based on cam_ID and time session boundaries
+
 
 
 #### USAGE
 
 **Basic command**
 ```
-python merge_meta.py <input_dir> -o <output_file>
+python combine_all_data.py
 ```
-`<input_dir>`: Root directory containing the folder structure with metadata files, that is the output of the post-processing pipeline ("data_processed") \
-`-o <output_file>`: Filename and path to the merged output CSV (required), e.g. ~"SEPPI-processing\output\all_metadata_combined.csv"
 
-**Common options**
+The script will prompt you for four inputs interactively:
+#### Input Parameters
 
-`-p, --pattern`: Filename pattern to match (default: *metadata_merged_crops_classified.csv)\
-`--add-metadata`: Adds columns: folder_datetime, file_date, source_file \
-`--append`: Appends to existing output file instead of overwriting it
+| Input Parameter | Description |
+|-----------------|-------------|
+| `Path to raw data directory` | Path to the raw data directory (unprocessed data from camtraps) containing JSON config files (e.g., `D:\SEPPI_CAMTRAPS_DE\2025`) |
+| `Output path for merged config CSV` | Path to save the merged config file containing the plant species information per recording session (e.g., `output/merged_config_seppi_flower.csv`) |
+| `Path to processed data directory` | Path to the processed data directory containing processed metadata CSVs (e.g., `data_processed`) |
+| `Output path for final merged metadata file` | Path to save the final output file (e.g., `output/all_metadata_combined.csv`) |
 
 **Examples**
 
-**Basic merge:**
+**Entered prompts by Jonna:**
 ```
-python merge_meta.py data_processed -o combined.csv
-```
-**With metadata columns:**
-```
-python merge_meta.py data_processed -o combined.csv --add-metadata
-```
-**Custom file pattern:**
-```
-python merge_meta.py data_processed `
-  -p "*metadata_merged_crops_classified_top1_all.csv" `
-  -o combined.csv
-```
-**Append to existing file:**
-```
-python merge_meta.py data_processed -o combined.csv --append
+=== SEPPI Data Pipeline: Combine JSON → Merge CSV → Join with Plant Species ===
+
+Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json): E:\SEPPI_CAMTRAPS_DE\2025
+Enter output path for merged config CSV (call the file: merged_config_seppi_flower.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\merged_config_seppi_flower.csv 
+Enter path to processed data directory (contains CSVs: [date]_metadata_merged_crops_classified.csv): F:\2025_processed
+Enter final output path for joined file (call the file: all_metadata_combined.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\all_metadata_combined.csv 
 ```
 
 **Output**
 
-- Merged CSV file at specified location 
-- Terminal summary including: \
--- Number of files combined \
--- Total number of rows (detections) \
--- Processing time
-
->**JONNA**
-```{}
-python merge_meta.py E:/2025_processed/data_processed ` 
--o ~/Documents/SEPPI-processing/output/all_metadata_combined.csv
-```
-
-### 1.1 **add_flower_meta.py**: Add flowering species information from raw camera trap data to merged metadata file
-
-
+- 2 CSV files at specified output location 
 
 
 ### 2. **aggregate_filter_meta.py**: Aggregate and filter metadata (by detection confidence, by tracking duration, by classification probability)
