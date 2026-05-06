@@ -201,6 +201,7 @@ def create_pollinator_plot(df: pl.DataFrame, output_dir: Path, title: str = "Pol
     plt.close()
     logger.info(f"Stacked plot saved to {plot_path}")
 
+
 # === Plot Generation: Duration Distribution for Pollinators ===
 def create_duration_distribution_plot(df: pl.DataFrame, output_dir: Path, title: str = "Duration Distribution of Pollinator Detections"):
     """
@@ -291,6 +292,7 @@ def create_duration_distribution_plot(df: pl.DataFrame, output_dir: Path, title:
     plt.close()
     logger.info(f"Duration distribution plot saved to {plot_path}")
 
+
 # === Plot Generation: Facetted Histogram of top1_prob_weighted ===
 def create_facetted_probability_histogram(df: pl.DataFrame, output_dir: Path, title: str = "Distribution of top1_prob_weighted by Pollinator Order"):
     """
@@ -355,6 +357,7 @@ def create_facetted_probability_histogram(df: pl.DataFrame, output_dir: Path, ti
     plt.close()
     logger.info(f"Facetted histogram saved to {plot_path}")
 
+
 # === Plot Generation: Facetted Histogram of det_conf_mean ===
 def create_facetted_confidence_histogram(df: pl.DataFrame, output_dir: Path, title: str = "Distribution of det_conf_mean by Pollinator Order"):
     """
@@ -418,6 +421,7 @@ def create_facetted_confidence_histogram(df: pl.DataFrame, output_dir: Path, tit
     plt.savefig(plot_path, dpi=200, bbox_inches="tight")
     plt.close()
     logger.info(f"Facetted confidence histogram saved to {plot_path}")
+
 
 # === Main Processing Function ===
 def process_metadata_classified(
@@ -572,7 +576,7 @@ def process_metadata_classified(
     if progress_callback:
         progress_callback(50, 100, "Computing classification aggregates...")
 
-    # Classification aggregates with weighted probability
+    # === Classification aggregates with weighted probability ===
     df_top1_all = (
         df.group_by(["cam_ID", "rec_ID", "track_ID", "top1"])
         .agg([
@@ -590,8 +594,28 @@ def process_metadata_classified(
         ])
     )
 
+    # === Handle plant_species: join once per track (not per top1) ===
+    if "plant_species" in df.columns:
+        # Extract plant_species once per track
+        plant_species_map = (
+            df.select(["cam_ID", "rec_ID", "track_ID", "plant_species"])
+            .unique(subset=["cam_ID", "rec_ID", "track_ID"], keep="first")
+        )
+        # Join to df_top1_all
+        df_top1_all = df_top1_all.join(
+            plant_species_map,
+            on=["cam_ID", "rec_ID", "track_ID"],
+            how="left"
+        )
+    else:
+        # If not present, we can skip
+        pass
+
+    # === Re-attach bioclip taxonomy columns (per top1) ===
     if classifier_type == "bioclip":
-        # Re-attach taxonomic hierarchy columns
+        bioclip_columns = [col for col in ["bioclip_species", "bioclip_genus", "bioclip_family",
+                                           "bioclip_order", "bioclip_class"] if col in df.columns]
+        # Create taxonomy map (per track + top1)
         taxonomy_map = (
             df.select(["cam_ID", "rec_ID", "track_ID", "top1"] + bioclip_columns)
             .unique(subset=["cam_ID", "rec_ID", "track_ID", "top1"], keep="first")
@@ -601,7 +625,6 @@ def process_metadata_classified(
             on=["cam_ID", "rec_ID", "track_ID", "top1"],
             how="left"
         )
-
     # Sort classifications per track by weighted and mean probabilities
     df_top1_all = df_top1_all.sort(
         by=["cam_ID", "rec_ID", "track_ID", "top1_prob_weighted", "top1_prob_mean"],
@@ -690,6 +713,10 @@ def process_metadata_classified(
         "top1", "top1_prob_mean", "top1_prob_weighted"
     ]
 
+    # Add plant_species if it exists
+    if "plant_species" in df.columns:
+        main_columns.append("plant_species")
+
     track_level_columns = [
         "start_time", "end_time", "duration_s",
         "det_conf_mean", "bbox_length_mean", "bbox_width_mean"
@@ -698,10 +725,14 @@ def process_metadata_classified(
     if classifier_type == "bioclip":
         main_columns.extend(bioclip_columns)
 
-    # Add order_category to final columns
+    # Add order_category and plant_species
     final_columns = main_columns + track_level_columns + ["order_category"]
 
-    # Now both dataframes have order_category
+    # Ensure plant_species is in final_columns
+    if "plant_species" in df.columns and "plant_species" not in final_columns:
+        final_columns.append("plant_species")
+
+    # Now both dataframes have order_category and plant_species
     df_top1_all = df_top1_all.select(main_columns + ["order_category"])
     df_top1_final = df_top1_final.select(final_columns)
 
