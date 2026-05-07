@@ -8,16 +8,15 @@ import pandas as pd
 from PIL import Image, ImageTk
 
 # === Configuration ===
-DEFAULT_OUTPUT_DIR = Path("validation_results")
-DEFAULT_OUTPUT_FILE = "validated_metadata.csv"
 DEFAULT_IMAGE_SIZE = (600, 400)  # Max display size
+
 
 # === Global Variables ===
 current_index = 0
 df = pd.DataFrame()
 image_paths = []
 validation_labels = []
-output_path = Path()
+output_path = Path()  # Will be set dynamically
 image_dir = Path()  # Directory where image crops are stored
 filename_to_path = {}  # Cache: filename → full path (one per file)
 comments = []  # Store user comments
@@ -279,7 +278,7 @@ class ImageValidatorGUI:
         image_paths = []
         validation_labels = [None] * len(df)
         comments = [None] * len(df)
-        output_path = DEFAULT_OUTPUT_DIR / DEFAULT_OUTPUT_FILE
+        output_path = Path()  # Will be set dynamically
         image_dir = Path()
         filename_to_path = {}
         self.photo = None
@@ -312,8 +311,9 @@ class ImageValidatorGUI:
             # Ensure all paths are strings
             df["crop_path"] = df["crop_path"].astype(str)
 
-            # Set output path
-            output_path = Path(file_path).parent / "validated_metadata.csv"
+            # ✅ Set output path: same dir as input CSV, with "_validated.csv"
+            input_path = Path(file_path)
+            output_path = input_path.parent / f"{input_path.stem}_validated.csv"
             self.status_label.config(text=f"Status: Loaded {len(df)} rows from CSV")
 
             # ✅ Initialize validation_labels and comments
