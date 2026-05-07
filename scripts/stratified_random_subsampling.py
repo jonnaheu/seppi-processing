@@ -185,10 +185,6 @@ Examples:
     # Combine all samples
     meta_strat1_final = pl.concat([pollinator_samples, non_pollinator_samples], how="vertical")
     
-    # Step 4: Shuffle the final result to randomize order
-    # Use Polars sample method with replacement to shuffle
-    meta_strat1_final = meta_strat1_final.sample(n=len(meta_strat1_final), seed=seed)
-    
     # Join with crop_path
     meta_strat1_crop = meta_strat1_final.join(
         meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
