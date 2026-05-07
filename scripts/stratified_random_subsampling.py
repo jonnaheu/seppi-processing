@@ -55,84 +55,16 @@ def slice_metadata_by_id(df: pl.DataFrame) -> pl.DataFrame:
     logger.info(f"Metadata sliced to {len(df)} unique tracks.")
     return df
 
-# === Helper: Stratified random sampling ===
-def stratified_random_sample(
-    df: pl.DataFrame,
-    group_column: str,
-    n_per_group: int = DEFAULT_N_PER_GROUP,
-    seed: int = DEFAULT_SEED
-) -> pl.DataFrame:
-    """
-    Perform stratified random sampling: select n_per_group rows from each group.
-
-    Args:
-        df: Input DataFrame
-        group_column: Column to group by
-        n_per_group: Number of rows to sample per group
-        seed: Random seed for reproducibility
-
-    Returns:
-        Sampled DataFrame
-    """
-    # Set seed
-    random.seed(seed)  # ← Only use random.seed()
-
-    # Group by specified column
-    groups = df.group_by(group_column)
-
-    # Sample n_per_group from each group
-    sampled_dfs = []
-    for name, group_df in groups:
-        if len(group_df) < n_per_group:
-            logger.warning(f"Group {name} has only {len(group_df)} rows. Sampling all.")
-            sampled_dfs.append(group_df)
-        else:
-            sampled = group_df.sample(n=n_per_group, shuffle=True)
-            sampled_dfs.append(sampled)
-
-    # Concatenate all samples
-    sampled_df = pl.concat(sampled_dfs, how="vertical")
-    logger.info(f"Stratified sampling completed: {len(sampled_df)} rows selected.")
-    return sampled_df
-
-# === Helper: Create duration bins ===
-def create_duration_bins(df: pl.DataFrame) -> pl.DataFrame:
-    """Create duration bins: ==0, >0-500, >500"""
+# === Helper: Create pollinator/non-pollinator strata ===
+def create_pollinator_strata(df: pl.DataFrame) -> pl.DataFrame:
+    """Create strata for pollinators vs non-pollinators based on bioclip_order"""
+    pollinator_orders = ['Lepidoptera', 'Coleoptera', 'Hymenoptera', 'Diptera']
+    
     df = df.with_columns([
-        pl.when(pl.col("duration_s") == 0)
-        .then(pl.lit("0"))
-        .when(pl.col("duration_s") <= 500)
-        .then(pl.lit(">0-500"))
-        .otherwise(pl.lit(">500"))
-        .alias("duration_bin")
-    ])
-    return df
-
-
-# === Helper: Create probability bins ===
-def create_probability_bins(df: pl.DataFrame) -> pl.DataFrame:
-    """Create 10 bins: 0.0-0.1, 0.1-0.2, ..., 0.9-1.0"""
-    df = df.with_columns([
-        pl.when(pl.col("top1_prob_weighted") < 0.1)
-        .then(pl.lit("0.0-0.1"))
-        .when(pl.col("top1_prob_weighted") < 0.2)
-        .then(pl.lit("0.1-0.2"))
-        .when(pl.col("top1_prob_weighted") < 0.3)
-        .then(pl.lit("0.2-0.3"))
-        .when(pl.col("top1_prob_weighted") < 0.4)
-        .then(pl.lit("0.3-0.4"))
-        .when(pl.col("top1_prob_weighted") < 0.5)
-        .then(pl.lit("0.4-0.5"))
-        .when(pl.col("top1_prob_weighted") < 0.6)
-        .then(pl.lit("0.5-0.6"))
-        .when(pl.col("top1_prob_weighted") < 0.7)
-        .then(pl.lit("0.6-0.7"))
-        .when(pl.col("top1_prob_weighted") < 0.8)
-        .then(pl.lit("0.7-0.8"))
-        .when(pl.col("top1_prob_weighted") < 0.9)
-        .then(pl.lit("0.8-0.9"))
-        .otherwise(pl.lit("0.9-1.0"))
-        .alias("prob_bin")
+        pl.when(pl.col("bioclip_order").is_in(pollinator_orders))
+        .then(pl.lit("pollinator"))
+        .otherwise(pl.lit("non_pollinator"))
+        .alias("strata1")
     ])
     return df
 
@@ -140,7 +72,7 @@ def create_probability_bins(df: pl.DataFrame) -> pl.DataFrame:
 def main():
     # === Argument Parser ===
     parser = argparse.ArgumentParser(
-        description="Stratified random subsampling of metadata with crop_path.",
+        description="Stratified random subsampling focusing on pollinator/non-pollinator strata.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -201,84 +133,82 @@ Examples:
     # === Step 3: Load processed metadata ===
     meta_processed = pl.read_csv(args.top1_final_path)
 
-    # === Strata 1: order_category (pollinator vs non-pollinator) ===
-    meta_strat1 = stratified_random_sample(
-        df=meta_processed,
-        group_column="order_category",
-        n_per_group=n_per_group,
-        seed=seed
-    )
-
+    # Debug: Check the original data
+    logger.info(f"Original data size: {len(meta_processed)}")
+    
+    # Step 1: Identify pollinator and non-pollinators
+    meta_processed = create_pollinator_strata(meta_processed)
+    
+    # Check strata distribution
+    strata_counts = meta_processed.group_by("strata1").agg(pl.count().alias("count"))
+    logger.info(f"Strata distribution: {strata_counts.to_dict()}")
+    
+    # Step 2: Group both according to probability
+    meta_processed = meta_processed.with_columns([
+        pl.when(pl.col("top1_prob_weighted") <= 0.5)
+        .then(pl.lit("low_prob"))
+        .otherwise(pl.lit("high_prob"))
+        .alias("prob_strata")
+    ])
+    
+    # Step 3: Sample half of the indicated sample size per group
+    # For each strata (pollinator and non-pollinator), sample n_per_group/2 from each probability group
+    
+    # Process pollinators
+    pollinator_data = meta_processed.filter(pl.col("strata1") == "pollinator")
+    logger.info(f"Pollinator data size: {len(pollinator_data)}")
+    
+    # Sample from low probability group
+    low_prob_pollinators = pollinator_data.filter(pl.col("prob_strata") == "low_prob")
+    high_prob_pollinators = pollinator_data.filter(pl.col("prob_strata") == "high_prob")
+    
+    pollinator_sample_size = n_per_group // 2
+    sampled_low_pollinator = low_prob_pollinators.sample(n=min(pollinator_sample_size, len(low_prob_pollinators)), seed=seed)
+    sampled_high_pollinator = high_prob_pollinators.sample(n=min(pollinator_sample_size, len(high_prob_pollinators)), seed=seed)
+    
+    pollinator_samples = pl.concat([sampled_low_pollinator, sampled_high_pollinator], how="vertical")
+    
+    # Process non-pollinators
+    non_pollinator_data = meta_processed.filter(pl.col("strata1") == "non_pollinator")
+    logger.info(f"Non-pollinator data size: {len(non_pollinator_data)}")
+    
+    # Sample from low probability group
+    low_prob_non_pollinators = non_pollinator_data.filter(pl.col("prob_strata") == "low_prob")
+    high_prob_non_pollinators = non_pollinator_data.filter(pl.col("prob_strata") == "high_prob")
+    
+    non_pollinator_sample_size = n_per_group // 2
+    sampled_low_non_pollinator = low_prob_non_pollinators.sample(n=min(non_pollinator_sample_size, len(low_prob_non_pollinators)), seed=seed)
+    sampled_high_non_pollinator = high_prob_non_pollinators.sample(n=min(non_pollinator_sample_size, len(high_prob_non_pollinators)), seed=seed)
+    
+    non_pollinator_samples = pl.concat([sampled_low_non_pollinator, sampled_high_non_pollinator], how="vertical")
+    
+    # Combine all samples
+    meta_strat1_final = pl.concat([pollinator_samples, non_pollinator_samples], how="vertical")
+    
+    # Step 4: Shuffle the final result to randomize order
+    # Use Polars sample method with replacement to shuffle
+    meta_strat1_final = meta_strat1_final.sample(n=len(meta_strat1_final), seed=seed)
+    
     # Join with crop_path
-    meta_strat1_crop = meta_strat1.join(
+    meta_strat1_crop = meta_strat1_final.join(
         meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
         on=["cam_ID", "rec_ID", "track_ID"],
         how="left"
     )
 
-    # Save
-    meta_strat1_crop.write_csv(output_dir / "meta_strat1_crop.csv")
-    logger.info(f"Saved meta_strat1_crop.csv")
-
-    # Split
-    meta_strat1_crop_polli = meta_strat1_crop.filter(pl.col("order_category") == "pollinator")
-    meta_strat1_crop_non_polli = meta_strat1_crop.filter(pl.col("order_category") == "non-pollinator")
-
-    meta_strat1_crop_polli.write_csv(output_dir / "meta_strat1_crop_polli.csv")
-    meta_strat1_crop_non_polli.write_csv(output_dir / "meta_strat1_crop_non_polli.csv")
-
-    # === Strata 2: duration_s (bins: 0, >0-500, >500) ===
-    meta_processed = create_duration_bins(meta_processed)
-
-    meta_strat2 = stratified_random_sample(
-        df=meta_processed,
-        group_column="duration_bin",
-        n_per_group=n_per_group,
-        seed=seed
-    )
-
-    # Join with crop_path
-    meta_strat2_crop = meta_strat2.join(
-        meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
-        on=["cam_ID", "rec_ID", "track_ID"],
-        how="left"
-    )
-
-    # Save each bin
-    for bin_name in ["0", ">0-500", ">500"]:
-        bin_data = meta_strat2_crop.filter(pl.col("duration_bin") == bin_name)
-        bin_data.write_csv(output_dir / f"meta_strat2_{bin_name.replace('>', 'gt').replace('-', '_')}.csv")
-        logger.info(f"Saved meta_strat2_{bin_name.replace('>', 'gt').replace('-', '_')}.csv")
-
-    # === Strata 3: top1_prob_weighted (10 bins: 0.0-0.1, ..., 0.9-1.0) ===
-    meta_processed = create_probability_bins(meta_processed)
-
-    meta_strat3 = stratified_random_sample(
-        df=meta_processed,
-        group_column="prob_bin",
-        n_per_group=n_per_group,
-        seed=seed
-    )
-
-    # Join with crop_path
-    meta_strat3_crop = meta_strat3.join(
-        meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
-        on=["cam_ID", "rec_ID", "track_ID"],
-        how="left"
-    )
-
-    # Save each bin
-    for bin_name in [f"{i:.1f}-{(i+0.1):.1f}" for i in range(10)]:
-        bin_data = meta_strat3_crop.filter(pl.col("prob_bin") == bin_name)
-        bin_data.write_csv(output_dir / f"meta_strat3_{bin_name.replace('-', '_')}.csv")
-        logger.info(f"Saved meta_strat3_{bin_name.replace('-', '_')}.csv")
+    # Save the main strata1 file with timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"strata1_{timestamp}.csv"
+    meta_strat1_crop.write_csv(output_dir / filename)
+    logger.info(f"Saved {filename}")
 
     # === Summary ===
     print(f"\n✅ Strata samples created!")
     print(f"  - Output directory: {output_dir}")
     print(f"  - Seed: {seed}")
     print(f"  - n_per_group: {n_per_group}")
-    print(f"  - Total files saved: 14")
+    print(f"  - Total samples: {len(meta_strat1_crop)}")
+    print(f"  - Main file: {filename}")
 
 if __name__ == "__main__":
     main()
