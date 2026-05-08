@@ -48,7 +48,7 @@ The scripts performs three key steps in sequence:
 
 **Basic command**
 ```
-python combine_all_data.py
+python merge_meta_and_flower.py
 ```
 
 The script will prompt you for four inputs interactively:
