@@ -110,6 +110,12 @@ Examples:
         help="Number of subsamples per duration group for strata2 (default: 100)"
     )
     parser.add_argument(
+        "--n-per-group-strata3",
+        type=int,
+        default=50,
+        help="Number of subsamples per probability bin for strata3 (default: 50)"
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=123,
@@ -129,6 +135,7 @@ Examples:
     # === Parameters ===
     n_per_group_strata1 = args.n_per_group_strata1
     n_per_group_strata2 = args.n_per_group_strata2
+    n_per_group_strata3 = args.n_per_group_strata3
     seed = args.seed
 
     # === Step 1: Create timestamped output folder ===
@@ -265,16 +272,111 @@ Examples:
     filename_strata2 = f"strata2_{timestamp}.csv"
     meta_strat2_crop.write_csv(output_dir / filename_strata2)
     logger.info(f"Saved strata2 (pollinator-only, 50% high/low prob per duration group): {filename_strata2}")
-    
+
+      # === STRATA 3: Stratified sampling by bioclip_order (Hymenoptera, Lepidoptera, Coleoptera, Diptera) ===
+    # Define the four orders of interest
+    target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
+    order_short = {
+        "Hymenoptera": "hym",
+        "Lepidoptera": "lep",
+        "Coleoptera": "col",
+        "Diptera": "dip"
+    }
+
+    # Read n_per_group_strata3 from args
+    n_per_group_strata3 = args.n_per_group_strata3
+
+    # Create probability bins: 0.0–0.1, 0.1–0.2, ..., 0.9–1.0
+    bin_labels = [f"{i*0.1:.1f}-{(i+1)*0.1:.1f}" for i in range(10)]
+    bin_edges = [i * 0.1 for i in range(11)]  # [0.0, 0.1, ..., 1.0]
+
+    # Clip probability to [0.0, 1.0]
+    meta_processed = meta_processed.with_columns([
+        pl.col("top1_prob_weighted")
+        .clip(lower_bound=0.0, upper_bound=1.0)
+        .alias("top1_prob_weighted_clipped")
+    ])
+
+    # Create prob_bin column using proper pl.when().then().when().then().otherwise()
+    meta_processed = meta_processed.with_columns([
+        pl.when(pl.col("top1_prob_weighted_clipped") < bin_edges[1])
+        .then(pl.lit(bin_labels[0]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[2])
+        .then(pl.lit(bin_labels[1]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[3])
+        .then(pl.lit(bin_labels[2]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[4])
+        .then(pl.lit(bin_labels[3]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[5])
+        .then(pl.lit(bin_labels[4]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[6])
+        .then(pl.lit(bin_labels[5]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[7])
+        .then(pl.lit(bin_labels[6]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[8])
+        .then(pl.lit(bin_labels[7]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[9])
+        .then(pl.lit(bin_labels[8]))
+        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[10])
+        .then(pl.lit(bin_labels[9]))
+        .otherwise(pl.lit("1.0-1.0"))  # Handle >= 1.0 (should be rare)
+        .alias("prob_bin")
+    ])
+
+    # Now loop over each target order
+    for order in target_orders:
+        logger.info(f"Processing strata3 for {order}...")
+
+        # Filter data for this order
+        order_data = meta_processed.filter(pl.col("bioclip_order") == order)
+
+        if len(order_data) == 0:
+            logger.warning(f"No data found for {order}. Skipping.")
+            continue
+
+        # Check how many bins are present
+        bin_counts = order_data.group_by("prob_bin").agg(pl.count().alias("count"))
+        logger.info(f"  - {order} has {len(bin_counts)} bins with counts: {bin_counts.to_dict()}")
+
+        # Sample n_per_group_strata3 from each bin
+        sampled_bins = []
+        for bin_label in bin_labels:
+            bin_data = order_data.filter(pl.col("prob_bin") == bin_label)
+            if len(bin_data) == 0:
+                logger.warning(f"  - No data in bin {bin_label} for {order}")
+                continue
+            sample_size = min(n_per_group_strata3, len(bin_data))
+            sampled = bin_data.sample(n=sample_size, seed=seed)
+            sampled_bins.append(sampled)
+
+        # Combine all sampled bins
+        meta_strat3_final = pl.concat(sampled_bins, how="vertical")
+
+        # Join with crop_path
+        meta_strat3_crop = meta_strat3_final.join(
+            meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
+            on=["cam_ID", "rec_ID", "track_ID"],
+            how="left"
+        )
+
+        # Save file
+        short_name = order_short[order]
+        filename = f"strata3_{short_name}_{timestamp}.csv"
+        meta_strat3_crop.write_csv(output_dir / filename)
+        logger.info(f"Saved {filename} ({len(meta_strat3_crop)} samples)")
+        
     # === Summary ===
     print(f"\n✅ Strata samples created!")
     print(f"  - Output directory: {output_dir}")
     print(f"  - Seed: {seed}")
     print(f"  - n_per_group_strata1: {n_per_group_strata1}")
     print(f"  - n_per_group_strata2: {n_per_group_strata2}")
+    print(f"  - n_per_group_strata3: {n_per_group_strata3}")
     print(f"  - Total strata1 samples: {len(meta_strat1_crop)}")
     print(f"  - Total strata2 samples: {len(meta_strat2_crop)}")
     print(f"  - Strata1 file: {filename_strata1}")
     print(f"  - Strata2 file: {filename_strata2}")
+    print(f"  - Strata3 files: strata3_hym_*.csv, strata3_lep_*.csv, strata3_col_*.csv, strata3_dip_*.csv")
+
 if __name__ == "__main__":
     main()
