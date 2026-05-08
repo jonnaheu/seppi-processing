@@ -273,7 +273,7 @@ Examples:
     meta_strat2_crop.write_csv(output_dir / filename_strata2)
     logger.info(f"Saved strata2 (pollinator-only, 50% high/low prob per duration group): {filename_strata2}")
 
-      # === STRATA 3: Stratified sampling by bioclip_order (Hymenoptera, Lepidoptera, Coleoptera, Diptera) ===
+    # === STRATA 3: Stratified sampling by bioclip_order (Hymenoptera, Lepidoptera, Coleoptera, Diptera) ===
     # Define the four orders of interest
     target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
     order_short = {
@@ -290,36 +290,29 @@ Examples:
     bin_labels = [f"{i*0.1:.1f}-{(i+1)*0.1:.1f}" for i in range(10)]
     bin_edges = [i * 0.1 for i in range(11)]  # [0.0, 0.1, ..., 1.0]
 
-    # Clip probability to [0.0, 1.0]
+    # Create prob_bin column using pl.when().then().when().then().otherwise()
     meta_processed = meta_processed.with_columns([
-        pl.col("top1_prob_weighted")
-        .clip(lower_bound=0.0, upper_bound=1.0)
-        .alias("top1_prob_weighted_clipped")
-    ])
-
-    # Create prob_bin column using proper pl.when().then().when().then().otherwise()
-    meta_processed = meta_processed.with_columns([
-        pl.when(pl.col("top1_prob_weighted_clipped") < bin_edges[1])
+        pl.when(pl.col("top1_prob_weighted") < bin_edges[1])
         .then(pl.lit(bin_labels[0]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[2])
+        .when(pl.col("top1_prob_weighted") < bin_edges[2])
         .then(pl.lit(bin_labels[1]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[3])
+        .when(pl.col("top1_prob_weighted") < bin_edges[3])
         .then(pl.lit(bin_labels[2]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[4])
+        .when(pl.col("top1_prob_weighted") < bin_edges[4])
         .then(pl.lit(bin_labels[3]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[5])
+        .when(pl.col("top1_prob_weighted") < bin_edges[5])
         .then(pl.lit(bin_labels[4]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[6])
+        .when(pl.col("top1_prob_weighted") < bin_edges[6])
         .then(pl.lit(bin_labels[5]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[7])
+        .when(pl.col("top1_prob_weighted") < bin_edges[7])
         .then(pl.lit(bin_labels[6]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[8])
+        .when(pl.col("top1_prob_weighted") < bin_edges[8])
         .then(pl.lit(bin_labels[7]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[9])
+        .when(pl.col("top1_prob_weighted") < bin_edges[9])
         .then(pl.lit(bin_labels[8]))
-        .when(pl.col("top1_prob_weighted_clipped") < bin_edges[10])
+        .when(pl.col("top1_prob_weighted") < bin_edges[10])
         .then(pl.lit(bin_labels[9]))
-        .otherwise(pl.lit("1.0-1.0"))  # Handle >= 1.0 (should be rare)
+        .otherwise(pl.lit("1.0-1.0"))  # Handle edge case (should be rare)
         .alias("prob_bin")
     ])
 
@@ -364,7 +357,7 @@ Examples:
         filename = f"strata3_{short_name}_{timestamp}.csv"
         meta_strat3_crop.write_csv(output_dir / filename)
         logger.info(f"Saved {filename} ({len(meta_strat3_crop)} samples)")
-        
+                
     # === Summary ===
     print(f"\n✅ Strata samples created!")
     print(f"  - Output directory: {output_dir}")
