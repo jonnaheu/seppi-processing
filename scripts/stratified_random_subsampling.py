@@ -123,6 +123,18 @@ Examples:
         help="Number of subsamples per plant species for strata4 (default: 50)"
     )
     parser.add_argument(
+        "--n-per-group-strata7",
+        type=int,
+        default=10,
+        help="Number of subsamples per species for strata7 (default: 10)"
+    )
+    parser.add_argument(
+        "--n-common-species-strata7",
+        type=int,
+        default=10,
+        help="Number of top frequent species to subsample from in strata7 (default: 10)"
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=123,
@@ -603,17 +615,12 @@ Examples:
         logger.info(f"Saved {filename} ({len(meta_strat6_crop)} samples)")
 
         # === STRATA 7: Top N most frequent species, subsample n_per_group_strata7 per species (low/high prob) ===
-    parser.add_argument(
-        "--n-common-species-strata7",
-        type=int,
-        default=10,
-        help="Number of top frequent species to subsample from (default: 10)"
-    )
+    # Add argument for n-common-species-strata7
+    
+    # Re-parse args to include new argument
+    args = parser.parse_args()
 
-    # Parse args again to include new argument
-    args = parser.parse_args()  # Re-parse to get new arg
-
-    # Extract new argument
+    # Extract parameters
     n_common_species = args.n_common_species_strata7
     n_per_group_strata7 = args.n_per_group_strata7  # Reuse same n_per_group as strata5/6
 
@@ -622,17 +629,23 @@ Examples:
         logger.error("bioclip_species column not found. Cannot create strata7.")
         return
 
-    # Filter to only include duration_s > 0
-    duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
+    # Define pollinator orders
+    pollinator_orders = ["Lepidoptera", "Hymenoptera", "Diptera", "Coleoptera"]
+
+    # Filter to only include rows where bioclip_order is in pollinator_orders AND duration_s > 0
+    pollinator_filtered = meta_processed.filter(
+        (pl.col("bioclip_order").is_in(pollinator_orders)) &
+        (pl.col("duration_s") > 0)
+    )
 
     # Count frequency of each species
-    species_counts = duration_filtered.group_by("bioclip_species").agg(
+    species_counts = pollinator_filtered.group_by("bioclip_species").agg(
         pl.count().alias("count")
     ).sort("count", descending=True)
 
     # Get top N most frequent species
     top_species = species_counts.head(n_common_species)["bioclip_species"].to_list()
-    logger.info(f"Selected top {len(top_species)} most frequent species: {top_species}")
+    logger.info(f"Selected top {len(top_species)} most frequent pollinator species: {top_species}")
 
     # Create output subfolder for strata7
     strata7_dir = output_dir / f"strata7_{timestamp}"
@@ -644,7 +657,7 @@ Examples:
         logger.info(f"Processing strata7 for species: {species}")
 
         # Filter data for this species
-        species_data = duration_filtered.filter(pl.col("bioclip_species") == species)
+        species_data = pollinator_filtered.filter(pl.col("bioclip_species") == species)
 
         if len(species_data) == 0:
             logger.warning(f"No data found for species: {species}. Skipping.")
@@ -685,15 +698,14 @@ Examples:
             how="left"
         )
 
-        # Generate short name: first 3 letters of genus + species
-        # Extract genus and species from bioclip_species (e.g., "Apis mellifera" → "ape")
-        parts = species.split()
+        # Generate short name: first 3 chars of genus + "_" + first 3 chars after space
+        parts = species.split(maxsplit=1)
         if len(parts) < 2:
-            short_name = species[:3].lower()  # fallback
+            short_name = species[:3].lower()
         else:
-            genus = parts[0]
-            species_name = parts[1]
-            short_name = (genus[:2] + species_name[:1]).lower()  # e.g., "ape"
+            genus_part = parts[0]
+            species_part = parts[1]
+            short_name = f"{genus_part[:3].lower()}_{species_part[:3].lower()}"
 
         # Save file
         filename = f"strata7_{short_name}_{timestamp}.csv"
@@ -708,7 +720,7 @@ Examples:
     print(f"  - n_per_group_strata2: {n_per_group_strata2}")
     print(f"  - n_per_group_strata3: {n_per_group_strata3}")
     print(f"  - n_per_group_strata4: {n_per_group_strata4}")
-    print(f"  - n_per_group_strata5/6: {n_per_group_strata3}")  # Reuse same value
+    print(f"  - n_per_group_strata5/6: {n_per_group_strata3}")
     print(f"  - n_common_species_strata7: {n_common_species}")
     print(f"  - Total strata1 samples: {len(meta_strat1_crop)}")
     print(f"  - Total strata2 samples: {len(meta_strat2_crop)}")
@@ -719,7 +731,7 @@ Examples:
     print(f"  - Strata5 files: strata5_hym_*.csv, strata5_lep_*.csv, strata5_col_*.csv, strata5_dip_*.csv")
     print(f"  - Strata6 files: strata6_hym_*.csv, strata6_lep_*.csv, strata6_col_*.csv, strata6_dip_*.csv")
     print(f"  - Strata7 files: strata7_*.csv (in subfolder: strata7_YYYY-MM-DD_HH-MM-SS)")
-
+    
 
 if __name__ == "__main__":
     main()
