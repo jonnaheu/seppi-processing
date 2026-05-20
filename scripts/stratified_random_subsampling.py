@@ -129,10 +129,16 @@ Examples:
         help="Number of subsamples per species for strata7 (default: 10)"
     )
     parser.add_argument(
-        "--n-common-species-strata7",
+        "--n-per-group-strata8",
         type=int,
         default=10,
-        help="Number of top frequent species to subsample from in strata7 (default: 10)"
+        help="Number of subsamples per species for strata8 (default: 10)"
+    )
+    parser.add_argument(
+        "--n-common-species-strata8",
+        type=int,
+        default=10,
+        help="Number of top frequent species to subsample from in strata8 (default: 10)"
     )
     parser.add_argument(
         "--seed",
@@ -377,69 +383,74 @@ Examples:
         meta_strat3_crop.write_csv(output_dir / filename)
         logger.info(f"Saved {filename} ({len(meta_strat3_crop)} samples)")
         
-    # === STRATA 4: Plant Species Stratification (Pollinators with duration > 0s) ===
-    # Filter to pollinators with duration > 0s
-    pollinator_active = meta_processed.filter(
-        (pl.col("strata1") == "pollinator") &
-        (pl.col("duration_s") > 0)
-    )
+    # === STRATA 4: Plant Species Stratification using median-based low/high prob per plant ===
+        pollinator_active = meta_processed.filter(
+            (pl.col("strata1") == "pollinator") &
+            (pl.col("duration_s") > 0)
+        )
 
-    # Check how many unique plant species exist
-    unique_plants = pollinator_active["plant_species"].unique()
-    logger.info(f"Found {len(unique_plants)} unique plant species (pollinators with duration > 0s)")
+        unique_plants = pollinator_active["plant_species"].unique()
+        logger.info(f"Found {len(unique_plants)} unique plant species (pollinators with duration > 0s)")
 
-    # Define probability groups
-    n_per_group_strata4 = args.n_per_group_strata4
-    total_sample_size = n_per_group_strata4
+        n_per_group_strata4 = args.n_per_group_strata4
 
-    # Sample 50% high_prob, 50% low_prob per plant species
-    strata4_samples = []
+        # Step 1: Compute median probability per plant species
+        median_by_plant = pollinator_active.group_by("plant_species").agg(
+            pl.col("top1_prob_weighted").median().alias("s4_median")
+        )
 
-    for plant in unique_plants:
-        logger.info(f"Processing strata4 for plant: {plant}")
+        # Step 2: Join median back
+        pollinator_active = pollinator_active.join(median_by_plant, on="plant_species", how="left")
 
-        # Filter data for this plant
-        plant_data = pollinator_active.filter(pl.col("plant_species") == plant)
+        # Step 3: Create low/high prob labels per plant
+        pollinator_active = pollinator_active.with_columns([
+            pl.when(pl.col("top1_prob_weighted") < pl.col("s4_median"))
+            .then(pl.lit("low_prob"))
+            .otherwise(pl.lit("high_prob"))
+            .alias("s4_prob_cat")
+        ])
 
-        if len(plant_data) == 0:
-            logger.warning(f"No data found for plant: {plant}")
-            continue
+        # Step 4: Sample per plant
+        strata4_samples = []
 
-        # Split into high_prob and low_prob
-        high_prob_plant = plant_data.filter(pl.col("prob_strata1") == "high_prob")
-        low_prob_plant = plant_data.filter(pl.col("prob_strata1") == "low_prob")
+        for plant in unique_plants:
+            logger.info(f"Processing strata4 for plant: {plant}")
 
-        # Calculate how many to sample from each (50/50)
-        sample_high = min(total_sample_size // 2, len(high_prob_plant))
-        sample_low = min(total_sample_size // 2, len(low_prob_plant))
+            plant_data = pollinator_active.filter(pl.col("plant_species") == plant)
 
-        # Sample from each
-        sampled_high = high_prob_plant.sample(n=sample_high, seed=seed)
-        sampled_low = low_prob_plant.sample(n=sample_low, seed=seed)
+            if len(plant_data) == 0:
+                logger.warning(f"No data found for plant: {plant}")
+                continue
 
-        # Combine and add to list
-        combined_sample = pl.concat([sampled_high, sampled_low], how="vertical")
-        strata4_samples.append(combined_sample)
+            # Split by median-based prob
+            low_prob_plant = plant_data.filter(pl.col("s4_prob_cat") == "low_prob")
+            high_prob_plant = plant_data.filter(pl.col("s4_prob_cat") == "high_prob")
 
-        logger.info(f"  - Plant {plant}: sampled {sample_high} high_prob, {sample_low} low_prob")
+            # Sample up to n_per_group_strata4/2 from each
+            sample_high = min(n_per_group_strata4 // 2, len(high_prob_plant))
+            sample_low = min(n_per_group_strata4 // 2, len(low_prob_plant))
 
-    # Combine all strata4 samples
-    meta_strat4_final = pl.concat(strata4_samples, how="vertical")
+            sampled_high = high_prob_plant.sample(n=sample_high, seed=seed)
+            sampled_low = low_prob_plant.sample(n=sample_low, seed=seed)
 
-    # Join with crop_path
-    meta_strat4_crop = meta_strat4_final.join(
-        meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
-        on=["cam_ID", "rec_ID", "track_ID"],
-        how="left"
-    )
+            combined_sample = pl.concat([sampled_high, sampled_low], how="vertical")
+            strata4_samples.append(combined_sample)
 
-    # Save strata4
-    filename_strata4 = f"strata4_{timestamp}.csv"
-    meta_strat4_crop.write_csv(output_dir / filename_strata4)
-    logger.info(f"Saved strata4 (pollinators with duration > 0s, 50% high/low prob per plant): {filename_strata4}")
+            logger.info(f"  - Plant {plant}: sampled {sample_high} high_prob, {sample_low} low_prob")
 
-    # === STRATA 5: Two samples per genus (low and high prob) per pollinator order (duration_s > 0) ===
-    # Target orders
+        # Combine and save
+        meta_strat4_final = pl.concat(strata4_samples, how="vertical")
+        meta_strat4_crop = meta_strat4_final.join(
+            meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
+            on=["cam_ID", "rec_ID", "track_ID"],
+            how="left"
+        )
+
+        filename_strata4 = f"strata4_{timestamp}.csv"
+        meta_strat4_crop.write_csv(output_dir / filename_strata4)
+        logger.info(f"Saved strata4 (median-based per plant): {filename_strata4}")
+   
+    # === STRATA 5: Two samples per genus (low/high prob) using median per group ===
     target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
     order_short = {
         "Hymenoptera": "hym",
@@ -448,87 +459,83 @@ Examples:
         "Diptera": "dip"
     }
 
-    # Define probability thresholds
-    low_prob_threshold = 0.3
-    high_prob_threshold = 0.3  # > 0.3 is high
+    # Define column to group by and output column names
+    group_col = "bioclip_genus"  # Change to "bioclip_family" for strata6
+    strata_name = "strata5"     # Change to "strata6" for family
+    median_col = "s5_median"    # Change to "s6_median" for family
+    prob_col = "s5_prob_cat"    # Change to "s6_prob_cat" for family
 
-    # Ensure bioclip_genus exists
-    if "bioclip_genus" not in meta_processed.columns:
-        logger.error("bioclip_genus column not found. Cannot create strata5.")
-        return
-
-    # Filter meta_processed to only include rows where duration_s > 0
+    # Filter duration > 0
     duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
 
-    # Loop over each target order
+    # Process each order
     for order in target_orders:
-        logger.info(f"Processing strata5 for {order} (duration_s > 0)...")
+        logger.info(f"Processing {strata_name} for {order} (duration_s > 0)...")
 
-        # Filter data for this order AND duration > 0
         order_data = duration_filtered.filter(pl.col("bioclip_order") == order)
 
         if len(order_data) == 0:
-            logger.warning(f"No data found for {order} with duration_s > 0. Skipping.")
+            logger.warning(f"No data for {order} with duration_s > 0. Skipping.")
             continue
 
-        # Get unique genera in this order (with duration > 0)
-        unique_genus = order_data["bioclip_genus"].unique()
-        logger.info(f"  - {order} has {len(unique_genus)} unique genera with duration_s > 0.")
+        # Compute median per group (genus/family)
+        median_by_group = order_data.group_by(group_col).agg(
+            pl.col("top1_prob_weighted").median().alias(median_col)
+        )
 
-        # List to store sampled rows
+        # Join back
+        order_data = order_data.join(median_by_group, on=group_col, how="left")
+
+        # Create low/high prob labels
+        order_data = order_data.with_columns([
+            pl.when(pl.col("top1_prob_weighted") < pl.col(median_col))
+            .then(pl.lit("low_prob"))
+            .otherwise(pl.lit("high_prob"))
+            .alias(prob_col)
+        ])
+
+        # Get unique groups
+        unique_groups = order_data[group_col].unique()
+
         sampled_rows = []
 
-        # For each genus, sample one low-prob and one high-prob detection
-        for genus in unique_genus:
-            genus_data = order_data.filter(pl.col("bioclip_genus") == genus)
+        for group in unique_groups:
+            group_data = order_data.filter(pl.col(group_col) == group)
 
-            if len(genus_data) == 0:
+            if len(group_data) == 0:
                 continue
 
-            # Split into low and high probability
-            low_prob_genus = genus_data.filter(pl.col("top1_prob_weighted") <= low_prob_threshold)
-            high_prob_genus = genus_data.filter(pl.col("top1_prob_weighted") > high_prob_threshold)
+            low_prob = group_data.filter(pl.col(prob_col) == "low_prob")
+            high_prob = group_data.filter(pl.col(prob_col) == "high_prob")
 
-            # Sample one from each (if available)
-            sampled_low = low_prob_genus.sample(n=1, seed=seed) if len(low_prob_genus) > 0 else None
-            sampled_high = high_prob_genus.sample(n=1, seed=seed) if len(high_prob_genus) > 0 else None
+            # Sample one from each
+            sampled_low = low_prob.sample(n=1, seed=seed) if len(low_prob) > 0 else None
+            sampled_high = high_prob.sample(n=1, seed=seed) if len(high_prob) > 0 else None
 
-            # Add to list with strata5_prob label
             if sampled_low is not None:
-                # Add strata5_prob column
-                sampled_low = sampled_low.with_columns(
-                    pl.lit("low_prob").alias("strata5_prob")
-                )
+                sampled_low = sampled_low.with_columns(pl.lit("low_prob").alias(prob_col))
                 sampled_rows.append(sampled_low)
             if sampled_high is not None:
-                # Add strata5_prob column
-                sampled_high = sampled_high.with_columns(
-                    pl.lit("high_prob").alias("strata5_prob")
-                )
+                sampled_high = sampled_high.with_columns(pl.lit("high_prob").alias(prob_col))
                 sampled_rows.append(sampled_high)
 
-        # Combine all sampled rows for this order
         if not sampled_rows:
-            logger.warning(f"No samples collected for {order} (after filtering duration_s > 0). Skipping output.")
+            logger.warning(f"No samples for {order} (after filtering). Skipping.")
             continue
 
-        meta_strat5_final = pl.concat(sampled_rows, how="vertical")
-
-        # Join with crop_path
-        meta_strat5_crop = meta_strat5_final.join(
+        meta_strat_final = pl.concat(sampled_rows, how="vertical")
+        meta_strat_crop = meta_strat_final.join(
             meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
             on=["cam_ID", "rec_ID", "track_ID"],
             how="left"
         )
 
-        # Save file
         short_name = order_short[order]
-        filename = f"strata5_{short_name}_{timestamp}.csv"
-        meta_strat5_crop.write_csv(output_dir / filename)
-        logger.info(f"Saved {filename} ({len(meta_strat5_crop)} samples)")
+        filename = f"{strata_name}_{short_name}_{timestamp}.csv"
+        meta_strat_crop.write_csv(output_dir / filename)
+        logger.info(f"Saved {filename} ({len(meta_strat_crop)} samples)")
 
-    # === STRATA 6: Two samples per family (low and high prob) per pollinator order (duration_s > 0) ===
-    # Target orders
+    # === STRATA 6: Two samples per family (low/high prob) using median per group ===
     target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
     order_short = {
         "Hymenoptera": "hym",
@@ -537,72 +544,139 @@ Examples:
         "Diptera": "dip"
     }
 
-    # Define probability thresholds
-    low_prob_threshold = 0.3
-    high_prob_threshold = 0.3  # > 0.3 is high
+    # Define column to group by and output column names
+    group_col = "bioclip_family"  # Change to "bioclip_family" for strata6
+    strata_name = "strata6"     # Change to "strata6" for family
+    median_col = "s6_median"    # Change to "s6_median" for family
+    prob_col = "s6_prob_cat"    # Change to "s6_prob_cat" for family
 
-    # Ensure bioclip_family exists
-    if "bioclip_family" not in meta_processed.columns:
-        logger.error("bioclip_family column not found. Cannot create strata6.")
-        return
-
-    # Filter meta_processed to only include rows where duration_s > 0
+    # Filter duration > 0
     duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
 
-    # Loop over each target order
+    # Process each order
     for order in target_orders:
-        logger.info(f"Processing strata6 for {order} (duration_s > 0, family-level)...")
+        logger.info(f"Processing {strata_name} for {order} (duration_s > 0)...")
 
-        # Filter data for this order AND duration > 0
         order_data = duration_filtered.filter(pl.col("bioclip_order") == order)
 
         if len(order_data) == 0:
-            logger.warning(f"No data found for {order} with duration_s > 0. Skipping.")
+            logger.warning(f"No data for {order} with duration_s > 0. Skipping.")
             continue
 
-        # Get unique families in this order (with duration > 0)
-        unique_family = order_data["bioclip_family"].unique()
-        logger.info(f"  - {order} has {len(unique_family)} unique families with duration_s > 0.")
+        # Compute median per group (genus/family)
+        median_by_group = order_data.group_by(group_col).agg(
+            pl.col("top1_prob_weighted").median().alias(median_col)
+        )
 
-        # List to store sampled rows
+        # Join back
+        order_data = order_data.join(median_by_group, on=group_col, how="left")
+
+        # Create low/high prob labels
+        order_data = order_data.with_columns([
+            pl.when(pl.col("top1_prob_weighted") < pl.col(median_col))
+            .then(pl.lit("low_prob"))
+            .otherwise(pl.lit("high_prob"))
+            .alias(prob_col)
+        ])
+
+        # Get unique groups
+        unique_groups = order_data[group_col].unique()
+
         sampled_rows = []
 
-        # For each family, sample one low-prob and one high-prob detection
-        for family in unique_family:
-            family_data = order_data.filter(pl.col("bioclip_family") == family)
+        for group in unique_groups:
+            group_data = order_data.filter(pl.col(group_col) == group)
 
-            if len(family_data) == 0:
+            if len(group_data) == 0:
                 continue
 
-            # Split into low and high probability
-            low_prob_family = family_data.filter(pl.col("top1_prob_weighted") <= low_prob_threshold)
-            high_prob_family = family_data.filter(pl.col("top1_prob_weighted") > high_prob_threshold)
+            low_prob = group_data.filter(pl.col(prob_col) == "low_prob")
+            high_prob = group_data.filter(pl.col(prob_col) == "high_prob")
 
-            # Sample one from each (if available)
-            sampled_low = low_prob_family.sample(n=1, seed=seed) if len(low_prob_family) > 0 else None
-            sampled_high = high_prob_family.sample(n=1, seed=seed) if len(high_prob_family) > 0 else None
+            # Sample one from each
+            sampled_low = low_prob.sample(n=1, seed=seed) if len(low_prob) > 0 else None
+            sampled_high = high_prob.sample(n=1, seed=seed) if len(high_prob) > 0 else None
 
-            # Add to list with strata6_prob column
             if sampled_low is not None:
-                sampled_low = sampled_low.with_columns(
-                    pl.lit("low_prob").alias("strata6_prob")
-                )
+                sampled_low = sampled_low.with_columns(pl.lit("low_prob").alias(prob_col))
                 sampled_rows.append(sampled_low)
             if sampled_high is not None:
-                sampled_high = sampled_high.with_columns(
-                    pl.lit("high_prob").alias("strata6_prob")
-                )
+                sampled_high = sampled_high.with_columns(pl.lit("high_prob").alias(prob_col))
                 sampled_rows.append(sampled_high)
 
-        # Combine all sampled rows for this order
         if not sampled_rows:
-            logger.warning(f"No samples collected for {order} (after filtering duration_s > 0). Skipping output.")
+            logger.warning(f"No samples for {order} (after filtering). Skipping.")
             continue
 
-        meta_strat6_final = pl.concat(sampled_rows, how="vertical")
+        meta_strat_final = pl.concat(sampled_rows, how="vertical")
+        meta_strat_crop = meta_strat_final.join(
+            meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
+            on=["cam_ID", "rec_ID", "track_ID"],
+            how="left"
+        )
+
+        short_name = order_short[order]
+        filename = f"{strata_name}_{short_name}_{timestamp}.csv"
+        meta_strat_crop.write_csv(output_dir / filename)
+        logger.info(f"Saved {filename} ({len(meta_strat_crop)} samples)")
+
+    # =# === STRATA 7: N-samples per order (low/high prob) using median per group ===
+    # Use n_per_group_strata7 from args
+    n_per_group_strata7 = args.n_per_group_strata7
+
+    target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
+    order_short = {
+        "Hymenoptera": "hym",
+        "Lepidoptera": "lep",
+        "Coleoptera": "col",
+        "Diptera": "dip"
+    }
+
+    # Filter duration > 0
+    duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
+
+    # Process each order
+    for order in target_orders:
+        logger.info(f"Processing strata7 for {order} (duration_s > 0, {n_per_group_strata7} samples per group)...")
+
+        order_data = duration_filtered.filter(pl.col("bioclip_order") == order)
+
+        if len(order_data) == 0:
+            logger.warning(f"No data for {order} with duration_s > 0. Skipping.")
+            continue
+
+        # Compute median per group (order)
+        median_by_order = order_data.group_by("bioclip_order").agg(
+            pl.col("top1_prob_weighted").median().alias("s7_median")
+        )
+
+        # Join back
+        order_data = order_data.join(median_by_order, on="bioclip_order", how="left")
+
+        # Create low/high prob labels
+        order_data = order_data.with_columns([
+            pl.when(pl.col("top1_prob_weighted") < pl.col("s7_median"))
+            .then(pl.lit("low_prob"))
+            .otherwise(pl.lit("high_prob"))
+            .alias("s7_prob_cat")
+        ])
+
+        # Split into low and high prob
+        low_prob_data = order_data.filter(pl.col("s7_prob_cat") == "low_prob")
+        high_prob_data = order_data.filter(pl.col("s7_prob_cat") == "high_prob")
+
+        # Sample up to n_per_group_strata7 from each group
+        sample_low = min(n_per_group_strata7, len(low_prob_data))
+        sample_high = min(n_per_group_strata7, len(high_prob_data))
+
+        sampled_low = low_prob_data.sample(n=sample_low, seed=seed)
+        sampled_high = high_prob_data.sample(n=sample_high, seed=seed)
+
+        # Combine
+        sampled = pl.concat([sampled_low, sampled_high], how="vertical")
 
         # Join with crop_path
-        meta_strat6_crop = meta_strat6_final.join(
+        meta_strat7_crop = sampled.join(
             meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
             on=["cam_ID", "rec_ID", "track_ID"],
             how="left"
@@ -610,23 +684,18 @@ Examples:
 
         # Save file
         short_name = order_short[order]
-        filename = f"strata6_{short_name}_{timestamp}.csv"
-        meta_strat6_crop.write_csv(output_dir / filename)
-        logger.info(f"Saved {filename} ({len(meta_strat6_crop)} samples)")
-
-        # === STRATA 7: Top N most frequent species, subsample n_per_group_strata7 per species (low/high prob) ===
-    # Add argument for n-common-species-strata7
-    
-    # Re-parse args to include new argument
-    args = parser.parse_args()
-
+        filename = f"strata7_{short_name}_{timestamp}.csv"
+        meta_strat7_crop.write_csv(output_dir / filename)
+        logger.info(f"Saved {filename} ({len(meta_strat7_crop)} samples)")
+        
+    # === STRATA 8: Top N most frequent species, subsample using median-based low/high prob per species ===
     # Extract parameters
-    n_common_species = args.n_common_species_strata7
-    n_per_group_strata7 = args.n_per_group_strata7  # Reuse same n_per_group as strata5/6
+    n_common_species = args.n_common_species_strata8
+    n_per_group_strata8 = args.n_per_group_strata8  # Now used correctly
 
     # Ensure bioclip_species exists
     if "bioclip_species" not in meta_processed.columns:
-        logger.error("bioclip_species column not found. Cannot create strata7.")
+        logger.error("bioclip_species column not found. Cannot create strata8.")
         return
 
     # Define pollinator orders
@@ -647,52 +716,53 @@ Examples:
     top_species = species_counts.head(n_common_species)["bioclip_species"].to_list()
     logger.info(f"Selected top {len(top_species)} most frequent pollinator species: {top_species}")
 
-    # Create output subfolder for strata7
-    strata7_dir = output_dir / f"strata7_{timestamp}"
-    strata7_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Created strata7 output directory: {strata7_dir}")
+    # Create output subfolder for strata8
+    strata8_dir = output_dir / f"strata8_{timestamp}"
+    strata8_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Created strata8 output directory: {strata8_dir}")
+
+    # Compute median per species
+    median_by_species = pollinator_filtered.group_by("bioclip_species").agg(
+        pl.col("top1_prob_weighted").median().alias("s8_median")
+    )
+
+    # Join back
+    pollinator_filtered = pollinator_filtered.join(median_by_species, on="bioclip_species", how="left")
+
+    # Create low/high prob labels using median per species
+    pollinator_filtered = pollinator_filtered.with_columns([
+        pl.when(pl.col("top1_prob_weighted") < pl.col("s8_median"))
+        .then(pl.lit("low_prob"))
+        .otherwise(pl.lit("high_prob"))
+        .alias("s8_prob_cat")
+    ])
 
     # Loop over each selected species
     for species in top_species:
-        logger.info(f"Processing strata7 for species: {species}")
+        logger.info(f"Processing strata8 for species: {species}")
 
-        # Filter data for this species
         species_data = pollinator_filtered.filter(pl.col("bioclip_species") == species)
 
         if len(species_data) == 0:
             logger.warning(f"No data found for species: {species}. Skipping.")
             continue
 
-        # Split into low and high probability
-        low_prob_species = species_data.filter(pl.col("top1_prob_weighted") <= 0.3)
-        high_prob_species = species_data.filter(pl.col("top1_prob_weighted") > 0.3)
+        # Split by median-based prob
+        low_prob_data = species_data.filter(pl.col("s8_prob_cat") == "low_prob")
+        high_prob_data = species_data.filter(pl.col("s8_prob_cat") == "high_prob")
 
-        # Calculate how many to sample from each
-        total_sample = min(n_per_group_strata7, len(species_data))
-        sample_low = min(total_sample // 2, len(low_prob_species))
-        sample_high = min(total_sample - sample_low, len(high_prob_species))
+        # Sample up to n_per_group_strata8 from each group
+        sample_low = min(n_per_group_strata8, len(low_prob_data))
+        sample_high = min(n_per_group_strata8, len(high_prob_data))
 
-        # Sample
-        sampled_low = low_prob_species.sample(n=sample_low, seed=seed) if sample_low > 0 else None
-        sampled_high = high_prob_species.sample(n=sample_high, seed=seed) if sample_high > 0 else None
+        sampled_low = low_prob_data.sample(n=sample_low, seed=seed)
+        sampled_high = high_prob_data.sample(n=sample_high, seed=seed)
 
-        # Combine samples
-        sampled_rows = []
-        if sampled_low is not None:
-            sampled_low = sampled_low.with_columns(pl.lit("low_prob").alias("strata7_prob"))
-            sampled_rows.append(sampled_low)
-        if sampled_high is not None:
-            sampled_high = sampled_high.with_columns(pl.lit("high_prob").alias("strata7_prob"))
-            sampled_rows.append(sampled_high)
-
-        if not sampled_rows:
-            logger.warning(f"No samples collected for {species}. Skipping output.")
-            continue
-
-        meta_strat7_final = pl.concat(sampled_rows, how="vertical")
+        # Combine
+        sampled = pl.concat([sampled_low, sampled_high], how="vertical")
 
         # Join with crop_path
-        meta_strat7_crop = meta_strat7_final.join(
+        meta_strat8_crop = sampled.join(
             meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
             on=["cam_ID", "rec_ID", "track_ID"],
             how="left"
@@ -708,10 +778,10 @@ Examples:
             short_name = f"{genus_part[:3].lower()}_{species_part[:3].lower()}"
 
         # Save file
-        filename = f"strata7_{short_name}_{timestamp}.csv"
-        meta_strat7_crop.write_csv(strata7_dir / filename)
-        logger.info(f"Saved {filename} ({len(meta_strat7_crop)} samples)")
-
+        filename = f"strata8_{short_name}_{timestamp}.csv"
+        meta_strat8_crop.write_csv(strata8_dir / filename)
+        logger.info(f"Saved {filename} ({len(meta_strat8_crop)} samples)")
+        
     # === Summary (updated) ===
     print(f"\n✅ Strata samples created!")
     print(f"  - Output directory: {output_dir}")
@@ -720,8 +790,8 @@ Examples:
     print(f"  - n_per_group_strata2: {n_per_group_strata2}")
     print(f"  - n_per_group_strata3: {n_per_group_strata3}")
     print(f"  - n_per_group_strata4: {n_per_group_strata4}")
-    print(f"  - n_per_group_strata5/6: {n_per_group_strata3}")
-    print(f"  - n_common_species_strata7: {n_common_species}")
+    print(f"  - n_per_group_strata8: {n_per_group_strata8}")
+    print(f"  - n_common_species_strata8: {n_common_species}")
     print(f"  - Total strata1 samples: {len(meta_strat1_crop)}")
     print(f"  - Total strata2 samples: {len(meta_strat2_crop)}")
     print(f"  - Strata1 file: {filename_strata1}")
@@ -730,7 +800,8 @@ Examples:
     print(f"  - Strata4 file: {filename_strata4}")
     print(f"  - Strata5 files: strata5_hym_*.csv, strata5_lep_*.csv, strata5_col_*.csv, strata5_dip_*.csv")
     print(f"  - Strata6 files: strata6_hym_*.csv, strata6_lep_*.csv, strata6_col_*.csv, strata6_dip_*.csv")
-    print(f"  - Strata7 files: strata7_*.csv (in subfolder: strata7_YYYY-MM-DD_HH-MM-SS)")
+    print(f"  - Strata7 files: strata7_hym_*.csv, strata7_lep_*.csv, strata7_col_*.csv, strata7_dip_*.csv")
+    print(f"  - Strata8 files: strata8_*.csv (in subfolder: strata8_YYYY-MM-DD_HH-MM-SS)")
     
 
 if __name__ == "__main__":
