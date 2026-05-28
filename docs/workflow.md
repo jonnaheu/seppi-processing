@@ -29,18 +29,22 @@ All data was processed with the following configurations:
 
 ### Setting up the work enviroment
 
-Run
+1. Download and unzip the folder `SEPPI-workflow-processing` from the shared location (e.g. Google Drive).
+2. Move the folder to a permament location of your choice (best locally on your laptop).
+3. Open VScode and open the folder under `File` > `Open Folder...`
+4. Open a new terminal and run the following code to install all required packages:
 ```{}
 pip install -r requirements.txt
 ```
 
 ### 1. **merge_meta_and_flower.py**: Find, load, and merge all metadata files 
 
-`merge_meta_and_flower.py` recursively searches the raw and processed data directory for config json files and metadata CSV files matching a given filename pattern (e.g. with suffix: `"[...]metadata_merged_crops_classified.csv"`), merges them into a single output CSV, and appends source-file paths and plant species information in additional columns. The script reports the number of processed files and total rows (detections).
+**Short description**: `merge_meta_and_flower.py` recursively searches the raw and processed data directory for config json-files and metadata csv-files matching a given filename pattern (e.g. with suffix: `"[...]metadata_merged_crops_classified.csv"`), merges them into a single output csv, and appends source-file paths and plant species information in additional columns. The script reports the number of processed files and total rows (detections).
 The scripts performs three key steps in sequence:
-1. Merges all JSON configuration files (YYYY-MM-DD_hh-mm-ss_config_seppi_flower.json) into a single merged_config_seppi_flower.csv
+1. Merges all JSON configuration files (YYYY-MM-DD_hh-mm-ss_config_seppi_flower.json) into a single `merged_config_seppi_flower.csv`
 2. Merges all processed metadata CSVs (e.g., *metadata_merged_crops_classified.csv) into memory (no temporary file)
 3. Joins the plant_species column from the config file to the metadata based on cam_ID and time session boundaries
+4. Saves a csv metadata file containig all single files plus the flower species information from the config files. `all_metadata_combined.csv`
 
 
 
@@ -63,13 +67,16 @@ The script will prompt you for four inputs interactively:
 
 **Examples**
 
-**Entered prompts by Jonna:**
+**Exemplary Terminal In- and Output**
 ```
 === SEPPI Data Pipeline: Combine JSON → Merge CSV → Join with Plant Species ===
 
 Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json): E:\SEPPI_CAMTRAPS_DE\2025
+
 Enter output path for merged config CSV (call the file: merged_config_seppi_flower.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\merged_config_seppi_flower.csv 
+
 Enter path to processed data directory (contains CSVs: [date]_metadata_merged_crops_classified.csv): F:\2025_processed
+
 Enter final output path for joined file (call the file: all_metadata_combined.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\all_metadata_combined.csv 
 ```
 
@@ -77,10 +84,12 @@ Enter final output path for joined file (call the file: all_metadata_combined.cs
 
 - 2 CSV files at specified output location 
 
+**IMPORTANT**: Any typos that were made when entering the flower species information in the field into the webapp will now appear in the data. Make sure your monitored flower species were spelled correctly and best clean out the output csv files now.
+
 
 ### 2. **aggregate_filter_meta.py**: Aggregate and filter metadata (by detection confidence, by tracking duration, by classification probability)
 
-The `aggregate_filter_meta.py` script processes raw classified metadata to:
+**Short description**: The `aggregate_filter_meta.py` script processes raw classified metadata to:
 
 - Filter detections based on confidence, duration, and classification probability
 - Aggregate track-level statistics (e.g., duration, average confidence, bounding box size)
