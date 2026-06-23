@@ -14,29 +14,42 @@ import pandas as pd
 print("=== SEPPI Data Pipeline: Combine JSON → Merge CSV → Join with Plant Species ===\n")
 
 # Step 1: Raw data directory (JSONs)
-raw_dir_input = Path(input("Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json): ").strip())
+raw_dir_input = Path(input("Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json or [date]_config_seppi_platform.json): ").strip())
 if not raw_dir_input.exists():
     raise FileNotFoundError(f"Raw directory not found: {raw_dir_input}")
 
-# Step 2: Output for merged config CSV
-config_output = Path(input("Enter output path for merged config CSV (call the file: merged_config_seppi_flower.csv): ").strip())
+# Step 2: Output directory (all files saved here)
+output_dir = Path(input("Enter path to output directory (all CSVs will be saved here): ").strip())
+output_dir.mkdir(parents=True, exist_ok=True)  # Create if not exists
 
 # Step 3: Processed data directory (metadata CSVs)
 processed_dir_input = Path(input("Enter path to processed data directory (contains CSVs: [date]_metadata_merged_crops_classified.csv): ").strip())
 if not processed_dir_input.exists():
     raise FileNotFoundError(f"Processed directory not found: {processed_dir_input}")
 
-# Step 4: Final output file (with plant_species)
-final_output = Path(input("Enter final output path for joined file (call the file: all_metadata_combined.csv): ").strip())
-
 # -----------------------------
-# Step 1: Merge JSON Files → merged_config.csv
+# Step 1: Generate Timestamp for Output Files
 # -----------------------------
-print("\n🔍 Step 1: Merging JSON configuration files...")
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+merged_config_file = output_dir / f"{timestamp}_merged_config_json.csv"
+merged_metadata_file = output_dir / f"{timestamp}_merged_metadata.csv"
+final_output_file = output_dir / f"{timestamp}_all_metadata_combined.csv"
 
-# Regex pattern for matching the filename
-FILENAME_PATTERN = re.compile(r'^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_config_seppi_flower\.json$')
-SEPPI_CAM_PATTERN = re.compile(r'^seppi-cam\d+$')
+print(f"\n Output directory: {output_dir}")
+print(f"  Timestamp: {timestamp}")
+print(f" Output files will be saved as:")
+print(f"  - {merged_config_file.name}")
+print(f"  - {merged_metadata_file.name}")
+print(f"  - {final_output_file.name}")
+# -----------------------------
+# Step 1: Merge JSON Files → merged_config_json.csv (Robust with Warnings)
+# -----------------------------
+print("\n Step 1: Merging JSON configuration files...")
+
+# Regex pattern for both file types
+FILENAME_PATTERN = re.compile(
+    r'^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_config_seppi_(flower|platform)\.json$'
+)
 
 all_rows = []
 
@@ -49,40 +62,71 @@ for json_file in raw_dir_input.rglob("*.json"):
     try:
         date_time = datetime.strptime(date_time_str, "%Y-%m-%d_%H-%M-%S")
     except ValueError:
-        print(f"Invalid date/time in filename: {json_file.name}")
+        print(f"❌ Invalid date/time in filename: {json_file.name}")
         continue
 
-    # Extract cam_ID from first subfolder under raw_dir_input
+    # ✅ Extract cam_ID with fallbacks
     cam_id = "unknown"
-    parent = json_file.parent
-    for p in parent.parents:
-        if p == raw_dir_input:
-            break
-        if p.parent == raw_dir_input and SEPPI_CAM_PATTERN.match(p.name):
-            cam_id = p.name
-            break
-
-    if cam_id == "unknown":
-        print(f"⚠️ No matching 'seppi-cam*' folder found for: {json_file}")
-        continue
+    deployment_setting = "unknown"
+    missing_fields = []
 
     try:
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-    except Exception as e:
-        print(f"Error reading {json_file}: {e}")
-        continue
 
+        # Try common keys for cam_ID
+        possible_cam_keys = [
+            "network.hotspot.ssid",
+            "network.wifi.ssid",
+            "device.id",
+            "camera.id",
+            "camera_name",
+            "device_name",
+            "cam_id",
+            "ssid"
+        ]
+
+        for key_path in possible_cam_keys:
+            keys = key_path.split('.')
+            value = data
+            valid = True
+            for k in keys:
+                if isinstance(value, dict) and k in value:
+                    value = value[k]
+                else:
+                    valid = False
+                    break
+            if valid and value:
+                cam_id = str(value).strip()
+                break
+        else:
+            missing_fields.append("cam_ID")
+
+        # Try to get deployment_setting
+        deployment = data.get("deployment", {})
+        setting = deployment.get("setting")
+        if setting:
+            deployment_setting = str(setting).strip()
+        else:
+            missing_fields.append("deployment_setting")
+
+        # If no missing fields, proceed
+        if missing_fields:
+            print(f"⚠️ Missing fields in {json_file.name}: {', '.join(missing_fields)}")
+
+    except Exception as e:
+        print(f"❌ Error reading {json_file}: {e}")
+        missing_fields.append("JSON parsing failed")
+
+    # ✅ Build row with all available data
     row = {
         'filename': json_file.name,
         'date_time': date_time_str,
-        'cam_ID': cam_id
+        'cam_ID': cam_id,
+        'deployment_setting': deployment_setting
     }
 
-    deployment = data.get("deployment", {})
-    row['deployment_start'] = deployment.get("start")
-    row['deployment_setting'] = deployment.get("setting")
-
+    # Add location and lens data (optional, but safe)
     location = deployment.get("location", {})
     row['location_latitude'] = location.get("latitude")
     row['location_longitude'] = location.get("longitude")
@@ -101,25 +145,24 @@ if not all_rows:
 
 # Write merged config CSV
 fieldnames = [
-    'filename', 'date_time', 'cam_ID', 'deployment_start',
-    'deployment_setting', 'location_latitude', 'location_longitude',
-    'location_accuracy', 'lens_position_manual', 'lens_position_min',
-    'lens_position_max'
+    'filename', 'date_time', 'cam_ID', 'deployment_setting',
+    'location_latitude', 'location_longitude', 'location_accuracy',
+    'lens_position_manual', 'lens_position_min', 'lens_position_max'
 ]
 
 try:
-    with open(config_output, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL, lineterminator='\n')
+    with open(merged_config_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
         writer.writeheader()
         writer.writerows(all_rows)
-    print(f"✅ Step 1: Merged {len(all_rows)} JSON files → '{config_output}'")
+    print(f"✅ Step 1: Merged {len(all_rows)} JSON files → '{merged_config_file}'")
 except Exception as e:
     raise RuntimeError(f"Error writing config CSV: {e}")
 
 # -----------------------------
-# Step 2: Merge Processed Metadata CSVs (No Temporary File!)
+# Step 2: Merge Processed Metadata CSVs → merged_metadata.csv (Pure Concatenation)
 # -----------------------------
-print("\n🔍 Step 2: Merging processed metadata CSV files...")
+print("\n Step 2: Merging processed metadata CSV files (pure concatenation)...")
 
 # Pattern for metadata files
 pattern = "*metadata_merged_crops_classified.csv"
@@ -130,33 +173,47 @@ if not files:
 
 print(f"Found {len(files)} metadata files.")
 
-# Read and concatenate directly into df_meta (no save to disk)
-all_dfs = []
-for file in files:
-    try:
-        df = pd.read_csv(file)
-        df["source_file"] = str(file)  # Only add source_file
-        all_dfs.append(df)
-        print(f"  ✅ Processed: {file.name} ({len(df)} rows)")
-    except Exception as e:
-        print(f"  ❌ Skipping {file.name}: {e}")
+# ✅ Read all files and concatenate rows without any transformation
+# Use low-level CSV reading to avoid pandas quirks
+all_rows = []
 
-if not all_dfs:
-    raise ValueError("No valid metadata files to merge.")
+# Open output file in write mode
+try:
+    with open(merged_metadata_file, 'w', newline='', encoding='utf-8') as outfile:
+        # We'll write the header only once
+        header_written = False
 
-df_meta = pd.concat(all_dfs, ignore_index=True)
+        for file in files:
+            try:
+                with open(file, 'r', encoding='utf-8') as infile:
+                    first_line = True
+                    for line in infile:
+                        if first_line:
+                            # Write header only once
+                            if not header_written:
+                                outfile.write(line)
+                                header_written = True
+                            first_line = False
+                        else:
+                            # Write all data lines
+                            outfile.write(line)
+                print(f"  ✅ Processed: {file.name}")
+            except Exception as e:
+                print(f"  ❌ Skipping {file.name}: {e}")
 
-print(f"✅ Step 2: Merged {len(df_meta)} rows into memory")
+    print(f"✅ Step 2: Merged {len(files)} files → '{merged_metadata_file}'")
+except Exception as e:
+    raise RuntimeError(f"Error writing merged metadata CSV: {e}")
 
 # -----------------------------
 # Step 3: Join plant_species using time-based session matching
 # -----------------------------
-print("\n🔍 Step 3: Joining plant_species based on cam_ID and time session...")
+print("\n Step 3: Joining plant_species based on cam_ID and time session...")
 
-# Read merged metadata and config
+# ✅ Read merged config and metadata
 try:
-    # df_meta is already in memory
-    df_config = pd.read_csv(config_output)
+    df_config = pd.read_csv(merged_config_file)
+    df_meta = pd.read_csv(merged_metadata_file)
 except Exception as e:
     raise RuntimeError(f"Error reading merged files: {e}")
 
@@ -184,8 +241,8 @@ df_config = df_config.sort_values(['cam_ID', 'date_time_dt'])
 intervals_list = []
 for cam_id, group in df_config.groupby('cam_ID'):
     starts = group['date_time_dt'].values
-    ends = group['date_time_dt'].shift(-1).values
-    ends[-1] = pd.Timestamp.max  # Last session goes to infinity
+    ends = group['date_time_dt'].shift(-1).values.copy()  # ✅ Make it writable
+    ends[-1] = pd.Timestamp.max  # ✅ Now this works
     for start, end in zip(starts, ends):
         intervals_list.append({
             'cam_ID': cam_id,
@@ -237,15 +294,19 @@ df_final = df_final.drop(columns=['timestamp_dt'])
 
 # Save final output
 try:
-    df_final.to_csv(final_output, index=False)
-    print(f"✅ Step 3: Joined {len(df_final)} rows → '{final_output}'")
+    df_final.to_csv(final_output_file, index=False)
+    print(f"✅ Step 3: Joined {len(df_final)} rows → '{final_output_file}'")
 except Exception as e:
     raise RuntimeError(f"Error writing final CSV: {e}")
-
+    
+        
 # -----------------------------
 # Final Summary
 # -----------------------------
-print(f"\n🎉 All steps completed successfully!")
-print(f"✅ Final output file: '{final_output}'")
-print(f"✅ Contains all original metadata + 'plant_species' column")
+print(f"\n All steps completed successfully!")
+print(f"✅ Final output directory: '{output_dir}'")
+print(f"✅ Output files:")
+print(f"  - {merged_config_file.name}")
+print(f"  - {merged_metadata_file.name}")
+print(f"  - {final_output_file.name}")
 print(f"✅ Processed {len(df_final)} rows.")
