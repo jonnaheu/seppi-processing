@@ -170,6 +170,115 @@ python aggregate_filter_meta.py data/results.csv outputs/ --config config.yaml -
 
 ### 3 **stratified_random_subsampling.py**: Stratified random selection of crop images for validation 
 
+The `stratified_random_subsampling.py` script performs multi-level stratified random sampling on aggregated pollinator detection metadata to generate balanced, representative, and reproducible subsamples for downstream tasks such as classification validation.
+
+This script is designed to work after aggregate_filter_meta.py, using its output (*_top1_final.csv) as input.
+
+#### Definition of strata:
+
+Multi-strata sampling across 8 distinct levels:
+
+    Strata1: Pollinator vs. non-pollinator + high/low classification probability
+    Strata2: Duration-based (single, multiple, long) for pollinators only
+    Strata3: By major pollinator order (Hymenoptera, Lepidoptera, Coleoptera, Diptera), stratified by probability bins (0.0–0.1, ..., 0.9–1.0)
+    Strata4: Median-based high/low probability per plant species (pollinators with duration > 0)
+    Strata5: One sample per genus (low/high prob) for each order
+    Strata6: One sample per family (low/high prob) for each order
+    Strata7: Multiple samples per order (up to n_per_group_strata7) split by median probability
+    Strata8: Top N most frequent species, subsampled by median-based probability per species
+
+#### Input
+The script requires two CSV files:
+| File	| Purpose |
+|-------|---------|
+| all_metadata_combined.csv	| Raw metadata with detection results (used to slice by track ID)|
+| all_metadata_combined_top1_final.csv	| Aggregated metadata from aggregate_filter_meta.py (used for stratification) |
+
+#### Output
+The script creates a timestamped output directory (e.g., strata_2025-04-05_14-30-22) inside the metadata_path.parent, containing:
+```strata_2025-04-05_14-30-22/
+├── strata1_2025-04-05_14-30-22.csv               # Pollinator/non-pollinator + prob
+├── strata2_2025-04-05_14-30-22.csv               # Duration-based (pollinator-only)
+├── strata3_hym_2025-04-05_14-30-22.csv           # Hymenoptera (by prob bin)
+├── strata3_lep_2025-04-05_14-30-22.csv           # Lepidoptera (by prob bin)
+├── strata3_col_2025-04-05_14-30-22.csv           # Coleoptera (by prob bin)
+├── strata3_dip_2025-04-05_14-30-22.csv           # Diptera (by prob bin)
+├── strata4_2025-04-05_14-30-22.csv               # Median-based per plant species
+├── strata5_hym_2025-04-05_14-30-22.csv           # One sample per genus (low/high prob)
+├── strata5_lep_2025-04-05_14-30-22.csv           # ...
+├── strata5_col_2025-04-05_14-30-22.csv           # ...
+├── strata5_dip_2025-04-05_14-30-22.csv           # ...
+├── strata6_hym_2025-04-05_14-30-22.csv           # One sample per family (low/high prob)
+├── strata6_lep_2025-04-05_14-30-22.csv           # ...
+├── strata6_col_2025-04-05_14-30-22.csv           # ...
+├── strata6_dip_2025-04-05_14-30-22.csv           # ...
+├── strata7_hym_2025-04-05_14-30-22.csv           # Multiple samples per order
+├── strata7_lep_2025-04-05_14-30-22.csv           # ...
+├── strata7_col_2025-04-05_14-30-22.csv           # ...
+├── strata7_dip_2025-04-05_14-30-22.csv           # ...
+├── strata8_2025-04-05_14-30-22/                  # Most common species
+│   ├── strata8_bombus_rub_2025-04-05_14-30-22.csv
+│   ├── strata8_apis_mel_2025-04-05_14-30-22.csv
+│   └── ...
+└── config.yaml                                  # Full run configuration
+```
+
+#### Usage
+1. Run with CLI arguments (recommended for one-off runs):
+```
+python stratified_random_subsampling.py `
+  --metadata-path /path/to/all_metadata_combined.csv `
+  --top1-final-path /path/to/all_metadata_combined_top1_final.csv `
+  --n-per-group-strata1 100 `
+  --n-per-group-strata2 100 `
+  --n-per-group-strata3 50 `
+  --n-per-group-strata4 50 `
+  --n-per-group-strata7 10 `
+  --n-per-group-strata8 10 `
+  --n-common-species-strata8 10 `
+  --seed 123
+  ```
+
+2. Run with config file (config.yaml):
+```
+metadata_path: /path/to/all_metadata_combined.csv
+top1_final_path: /path/to/all_metadata_combined_top1_final.csv
+n_per_group_strata1: 100
+n_per_group_strata2: 100
+n_per_group_strata3: 50
+n_per_group_strata4: 50
+n_per_group_strata7: 10
+n_per_group_strata8: 10
+n_common_species_strata8: 10
+seed: 123
+```
+Run command:
+``` 
+python stratified_random_subsampling.py --config config.yaml
+```
+
+3. Mix CLI and config (CLI overrides config):
+```
+python stratified_random_subsampling.py `
+  --config config.yaml `
+  --n-per-group-strata1 200 `
+  --seed 42
+```
+
+**Configuration Parameters**
+| Argument | Default |	Description |
+|---------------|---------|--------------|
+|--metadata-path|	required	|Path to all_metadata_combined.csv|
+|--top1-final-path|	required|	Path to all_metadata_combined_top1_final.csv|
+|--n-per-group-strata1	|100	|Samples per group in strata1 (pollinator/non-pollinator + prob)|
+|--n-per-group-strata2|	100	|Samples per duration group (pollinator-only)|
+|--n-per-group-strata3|	50|	Samples per probability bin per order (strata3)|
+|--n-per-group-strata4|	50|	Samples per plant species (median-based)|
+|--n-per-group-strata7|	10|	Samples per order (strata7)|
+|--n-per-group-strata8|	10|	Samples per top species (strata8)|
+|--n-common-species-strata8|	10|	Number of top frequent species to include in strata8|
+|--seed	|123	|Random seed for reproducibility|
+
 
 ### 4. **validate_results_ui.py**: Validation of classification results 
 
