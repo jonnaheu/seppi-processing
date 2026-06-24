@@ -123,6 +123,18 @@ Examples:
         help="Number of subsamples per plant species for strata4 (default: 50)"
     )
     parser.add_argument(
+    "--n-per-group-strata5",
+    type=int,
+    default=10,
+    help="Number of subsamples per genus for strata5 (default: 10)"
+    )
+    parser.add_argument(
+        "--n-per-group-strata6",
+        type=int,
+        default=10,
+        help="Number of subsamples per family for strata6 (default: 10)"
+    )
+    parser.add_argument(
         "--n-per-group-strata7",
         type=int,
         default=10,
@@ -146,8 +158,29 @@ Examples:
         default=123,
         help="Random seed for reproducibility (default: 123)"
     )
+    parser.add_argument(
+    "--config",
+    type=Path,
+    help="Path to YAML config file (overrides CLI arguments if present)"
+    )   
 
     args = parser.parse_args()
+    n_per_group_strata5 = args.n_per_group_strata5
+    n_per_group_strata6 = args.n_per_group_strata6
+
+    # === Load config file if provided ===
+    if args.config and args.config.exists():
+        import yaml
+        with open(args.config, "r") as f:
+            config = yaml.safe_load(f)
+
+        # Override CLI args with config values (if present)
+        for key, value in config.items():
+            if hasattr(args, key) and value is not None:
+                setattr(args, key, value)
+        logger.info(f"Loaded configuration from: {args.config}")
+    else:
+        logger.info("No config file provided or file not found.")
 
     # === Validate inputs ===
     if not args.metadata_path.exists():
@@ -450,7 +483,9 @@ Examples:
         meta_strat4_crop.write_csv(output_dir / filename_strata4)
         logger.info(f"Saved strata4 (median-based per plant): {filename_strata4}")
    
-    # === STRATA 5: Two samples per genus (low/high prob) using median per group ===
+    # === STRATA 5: N-samples per genus (low/high prob) using median per group ===
+    n_per_group_strata5 = args.n_per_group_strata5
+
     target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
     order_short = {
         "Hymenoptera": "hym",
@@ -459,18 +494,18 @@ Examples:
         "Diptera": "dip"
     }
 
-    # Define column to group by and output column names
-    group_col = "bioclip_genus"  # Change to "bioclip_family" for strata6
-    strata_name = "strata5"     # Change to "strata6" for family
-    median_col = "s5_median"    # Change to "s6_median" for family
-    prob_col = "s5_prob_cat"    # Change to "s6_prob_cat" for family
+    # Define group column and sample count
+    group_col = "bioclip_genus"
+    strata_name = "strata5"
+    median_col = "s5_median"
+    prob_col = "s5_prob_cat"
 
     # Filter duration > 0
     duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
 
     # Process each order
     for order in target_orders:
-        logger.info(f"Processing {strata_name} for {order} (duration_s > 0)...")
+        logger.info(f"Processing {strata_name} for {order} (duration_s > 0, {n_per_group_strata5} samples per group)...")
 
         order_data = duration_filtered.filter(pl.col("bioclip_order") == order)
 
@@ -478,7 +513,7 @@ Examples:
             logger.warning(f"No data for {order} with duration_s > 0. Skipping.")
             continue
 
-        # Compute median per group (genus/family)
+        # Compute median per group (genus)
         median_by_group = order_data.group_by(group_col).agg(
             pl.col("top1_prob_weighted").median().alias(median_col)
         )
@@ -508,9 +543,12 @@ Examples:
             low_prob = group_data.filter(pl.col(prob_col) == "low_prob")
             high_prob = group_data.filter(pl.col(prob_col) == "high_prob")
 
-            # Sample one from each
-            sampled_low = low_prob.sample(n=1, seed=seed) if len(low_prob) > 0 else None
-            sampled_high = high_prob.sample(n=1, seed=seed) if len(high_prob) > 0 else None
+            # Sample up to n_per_group_strata5 from each group
+            sample_low = min(n_per_group_strata5, len(low_prob))
+            sample_high = min(n_per_group_strata5, len(high_prob))
+
+            sampled_low = low_prob.sample(n=sample_low, seed=seed) if sample_low > 0 else None
+            sampled_high = high_prob.sample(n=sample_high, seed=seed) if sample_high > 0 else None
 
             if sampled_low is not None:
                 sampled_low = sampled_low.with_columns(pl.lit("low_prob").alias(prob_col))
@@ -535,7 +573,9 @@ Examples:
         meta_strat_crop.write_csv(output_dir / filename)
         logger.info(f"Saved {filename} ({len(meta_strat_crop)} samples)")
 
-    # === STRATA 6: Two samples per family (low/high prob) using median per group ===
+   # === STRATA 6: N-samples per family (low/high prob) using median per group ===
+    n_per_group_strata6 = args.n_per_group_strata6
+
     target_orders = ["Hymenoptera", "Lepidoptera", "Coleoptera", "Diptera"]
     order_short = {
         "Hymenoptera": "hym",
@@ -544,18 +584,18 @@ Examples:
         "Diptera": "dip"
     }
 
-    # Define column to group by and output column names
-    group_col = "bioclip_family"  # Change to "bioclip_family" for strata6
-    strata_name = "strata6"     # Change to "strata6" for family
-    median_col = "s6_median"    # Change to "s6_median" for family
-    prob_col = "s6_prob_cat"    # Change to "s6_prob_cat" for family
+    # Define group column and sample count
+    group_col = "bioclip_family"
+    strata_name = "strata6"
+    median_col = "s6_median"
+    prob_col = "s6_prob_cat"
 
     # Filter duration > 0
     duration_filtered = meta_processed.filter(pl.col("duration_s") > 0)
 
     # Process each order
     for order in target_orders:
-        logger.info(f"Processing {strata_name} for {order} (duration_s > 0)...")
+        logger.info(f"Processing {strata_name} for {order} (duration_s > 0, {n_per_group_strata6} samples per group)...")
 
         order_data = duration_filtered.filter(pl.col("bioclip_order") == order)
 
@@ -563,7 +603,7 @@ Examples:
             logger.warning(f"No data for {order} with duration_s > 0. Skipping.")
             continue
 
-        # Compute median per group (genus/family)
+        # Compute median per group (family)
         median_by_group = order_data.group_by(group_col).agg(
             pl.col("top1_prob_weighted").median().alias(median_col)
         )
@@ -593,9 +633,12 @@ Examples:
             low_prob = group_data.filter(pl.col(prob_col) == "low_prob")
             high_prob = group_data.filter(pl.col(prob_col) == "high_prob")
 
-            # Sample one from each
-            sampled_low = low_prob.sample(n=1, seed=seed) if len(low_prob) > 0 else None
-            sampled_high = high_prob.sample(n=1, seed=seed) if len(high_prob) > 0 else None
+            # Sample up to n_per_group_strata6 from each group
+            sample_low = min(n_per_group_strata6, len(low_prob))
+            sample_high = min(n_per_group_strata6, len(high_prob))
+
+            sampled_low = low_prob.sample(n=sample_low, seed=seed) if sample_low > 0 else None
+            sampled_high = high_prob.sample(n=sample_high, seed=seed) if sample_high > 0 else None
 
             if sampled_low is not None:
                 sampled_low = sampled_low.with_columns(pl.lit("low_prob").alias(prob_col))
@@ -781,28 +824,21 @@ Examples:
         filename = f"strata8_{short_name}_{timestamp}.csv"
         meta_strat8_crop.write_csv(strata8_dir / filename)
         logger.info(f"Saved {filename} ({len(meta_strat8_crop)} samples)")
-        
-    # === Summary (updated) ===
+
+   
+# === Summary (updated) ===
     print(f"\n✅ Strata samples created!")
     print(f"  - Output directory: {output_dir}")
     print(f"  - Seed: {seed}")
-    print(f"  - n_per_group_strata1: {n_per_group_strata1}")
-    print(f"  - n_per_group_strata2: {n_per_group_strata2}")
-    print(f"  - n_per_group_strata3: {n_per_group_strata3}")
-    print(f"  - n_per_group_strata4: {n_per_group_strata4}")
-    print(f"  - n_per_group_strata8: {n_per_group_strata8}")
-    print(f"  - n_common_species_strata8: {n_common_species}")
-    print(f"  - Total strata1 samples: {len(meta_strat1_crop)}")
-    print(f"  - Total strata2 samples: {len(meta_strat2_crop)}")
-    print(f"  - Strata1 file: {filename_strata1}")
-    print(f"  - Strata2 file: {filename_strata2}")
-    print(f"  - Strata3 files: strata3_hym_*.csv, strata3_lep_*.csv, strata3_col_*.csv, strata3_dip_*.csv")
-    print(f"  - Strata4 file: {filename_strata4}")
-    print(f"  - Strata5 files: strata5_hym_*.csv, strata5_lep_*.csv, strata5_col_*.csv, strata5_dip_*.csv")
-    print(f"  - Strata6 files: strata6_hym_*.csv, strata6_lep_*.csv, strata6_col_*.csv, strata6_dip_*.csv")
-    print(f"  - Strata7 files: strata7_hym_*.csv, strata7_lep_*.csv, strata7_col_*.csv, strata7_dip_*.csv")
-    print(f"  - Strata8 files: strata8_*.csv (in subfolder: strata8_YYYY-MM-DD_HH-MM-SS)")
-    
+    print(f"  - Strata1: N/group: {n_per_group_strata1}, total samples: {len(meta_strat1_crop)}, filename: {filename_strata1}")
+    print(f"  - Strata2: N/group: {n_per_group_strata2}, total samples: {len(meta_strat2_crop)}, filename: {filename_strata2}")
+    print(f"  - Strata3: N/group: {n_per_group_strata3}, files: strata3_hym_*.csv, strata3_lep_*.csv, strata3_col_*.csv, strata3_dip_*.csv")
+    print(f"  - Strata4: N/group: {n_per_group_strata4}, total samples: {len(meta_strat4_crop)}, filename: {filename_strata4}")
+    print(f"  - Strata5: N/group: {n_per_group_strata5}, files: strata5_hym_*.csv, strata5_lep_*.csv, strata5_col_*.csv, strata5_dip_*.csv")
+    print(f"  - Strata6: N/group: {n_per_group_strata6},  files: strata6_hym_*.csv, strata6_lep_*.csv, strata6_col_*.csv, strata6_dip_*.csv")
+    print(f"  - Strata7: N/group: {n_per_group_strata7}, files: strata7_hym_*.csv, strata7_lep_*.csv, strata7_col_*.csv, strata7_dip_*.csv")
+    print(f"  - Strata8: N-Top species: {n_common_species}, N/group: {n_per_group_strata8}, foldername: strata8_YYYY-MM-DD_HH-MM-SS)")
+  
 
 if __name__ == "__main__":
     main()
