@@ -29,13 +29,16 @@ All data was processed with the following configurations:
 
 ### Setting up the work enviroment
 
-1. Download and unzip the folder `SEPPI-workflow-processing` from the shared location (e.g. Google Drive).
-2. Move the folder to a permament location of your choice (best locally on your laptop).
+1. Download `SEPPI-workflow-processing` scripts either using Git directly from github OR download the folder from the shared location (e.g. Google Drive). **-> More detailed instructions were shared via email.**
 3. Open VScode and open the folder under `File` > `Open Folder...`
-4. Open a new terminal and run the following code to install all required packages:
+4. Open a new terminal and run the following code to install all required packages (NOTE: you have to have python already installed to run this):
 ```{}
 pip install -r requirements.txt
 ```
+
+After setting up the work environment you can start running the next scripts one after another. Therefore you have to change the directory in the terminal to `scripts`.
+
+Run in a new Terminal: ``` cd scripts ``` 
 
 ### 1. **merge_meta_and_flower.py**: Find, load, and merge all metadata files 
 
@@ -61,10 +64,8 @@ The script will prompt you for four inputs interactively:
 | Input Parameter | Description |
 |-----------------|-------------|
 | `Path to raw data directory` | Path to the raw data directory (unprocessed data from camtraps) containing JSON config files (e.g., `D:\SEPPI_CAMTRAPS_DE\2025`) |
-| `Output path for merged config CSV` | Path to save the merged config file containing the plant species information per recording session (e.g., `output/merged_config_seppi_flower.csv`) |
+| `Path to output directory` | Create a folder where you want to save the output of all the next steps (e.g., `C:\Users\NAME\output`) |
 | `Path to processed data directory` | Path to the processed data directory containing processed metadata CSVs (e.g., `data_processed`) |
-| `Output path for final merged metadata file` | Path to save the final output file (e.g., `output/all_metadata_combined.csv`) |
-
 **Examples**
 
 **Exemplary Terminal In- and Output**
@@ -73,18 +74,19 @@ The script will prompt you for four inputs interactively:
 
 Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json): E:\SEPPI_CAMTRAPS_DE\2025
 
-Enter output path for merged config CSV (call the file: merged_config_seppi_flower.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\merged_config_seppi_flower.csv 
+Enter output path for output directory (call the file: merged_config_seppi_flower.csv): 
 
 Enter path to processed data directory (contains CSVs: [date]_metadata_merged_crops_classified.csv): F:\2025_processed
 
-Enter final output path for joined file (call the file: all_metadata_combined.csv): C:\Users\heuschel\Documents\SEPPI-processing\output\all_metadata_combined.csv 
 ```
 
 **Output**
 
-- 2 CSV files at specified output location 
+- 3 CSV files at specified output location 
 
 **IMPORTANT**: Any typos that were made when entering the flower species information in the field into the webapp will now appear in the data. Make sure your monitored flower species were spelled correctly and best clean out the output csv files now.
+
+If you have not use the option to enter the flower species information
 
 
 ### 2. **aggregate_filter_meta.py**: Aggregate and filter metadata (by detection confidence, by tracking duration, by classification probability)
