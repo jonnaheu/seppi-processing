@@ -38,7 +38,7 @@ class ImageValidatorGUI:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Image Validator - Multi-Strata Setup")
+        self.root.title("Crop Validator")
         self.root.configure(bg="black")
         self.root.resizable(True, True)
 
@@ -60,24 +60,24 @@ class ImageValidatorGUI:
         # Title (centered)
         title = tk.Label(
             self.init_frame,
-            text="Image Validation Setup (Multi-Strata)",
+            text="Setup Validation Run",
             font=("Arial", 16, "bold"),
             bg="black",
-            fg="#00ff88"
+            fg="#00aeff"
         )
         title.pack(pady=10)
 
-        # Directory Selection
+        # Directory Selection (centered)
         self.dir_frame = tk.Frame(self.init_frame, bg="black")
-        self.dir_frame.pack(fill=tk.X, pady=10)
+        self.dir_frame.pack(fill=tk.X, pady=10, padx=20, anchor="center")
 
         tk.Label(
             self.dir_frame,
-            text="📁 Processed Image Directory:",
+            text="📁 Processed Data Directory:",
             font=("Arial", 12),
             bg="black",
             fg="white"
-        ).pack(anchor="w")
+        ).pack(anchor="center")
 
         self.dir_path_label = tk.Label(
             self.dir_frame,
@@ -88,7 +88,7 @@ class ImageValidatorGUI:
             wraplength=win_w - 100,
             justify=tk.LEFT
         )
-        self.dir_path_label.pack(anchor="w", pady=(2, 5))
+        self.dir_path_label.pack(anchor="center", pady=(2, 5))
 
         self.dir_button = tk.Button(
             self.dir_frame,
@@ -100,11 +100,11 @@ class ImageValidatorGUI:
             bd=2,
             command=self.select_image_dir
         )
-        self.dir_button.pack(anchor="w")
+        self.dir_button.pack(anchor="center")
 
-        # Metadata CSV Selection
+        # Metadata CSV Selection (centered)
         self.csv_frame = tk.Frame(self.init_frame, bg="black")
-        self.csv_frame.pack(fill=tk.X, pady=10)
+        self.csv_frame.pack(fill=tk.X, pady=10, padx=20, anchor="center")
 
         tk.Label(
             self.csv_frame,
@@ -112,7 +112,7 @@ class ImageValidatorGUI:
             font=("Arial", 12),
             bg="black",
             fg="white"
-        ).pack(anchor="w")
+        ).pack(anchor="center")
 
         self.csv_path_label = tk.Label(
             self.csv_frame,
@@ -123,7 +123,7 @@ class ImageValidatorGUI:
             wraplength=win_w - 100,
             justify=tk.LEFT
         )
-        self.csv_path_label.pack(anchor="w", pady=(2, 5))
+        self.csv_path_label.pack(anchor="center", pady=(2, 5))
 
         self.csv_button = tk.Button(
             self.csv_frame,
@@ -135,18 +135,18 @@ class ImageValidatorGUI:
             bd=2,
             command=self.select_metadata_csv
         )
-        self.csv_button.pack(anchor="w")
+        self.csv_button.pack(anchor="center")
 
         # Validation Criteria (centered)
         self.criteria_frame = tk.Frame(self.init_frame, bg="black")
-        self.criteria_frame.pack(fill=tk.X, pady=10)
+        self.criteria_frame.pack(fill=tk.X, pady=10, padx=20, anchor="center")
 
         tk.Label(
             self.criteria_frame,
             text="🎯 Validation Criteria:",
             font=("Arial", 12),
             bg="black",
-            fg="white"
+            fg="#00aeff"
         ).pack(anchor="center", pady=(0, 10))
 
         self.criteria_var = tk.StringVar(value="")
@@ -156,11 +156,7 @@ class ImageValidatorGUI:
             ("Validate Bioclip classification result", "bioclip"),
         ]
 
-        # Create a frame to group the second option
-        self.bioclip_frame = tk.Frame(self.init_frame, bg="black")
-        self.bioclip_frame.pack(fill=tk.X, pady=10)
-
-        # Create radio buttons with checkmarks
+        # Create radio buttons with checkmarks (centered)
         self.radio_buttons = {}
         for text, value in criteria_options:
             label_text = f"✓ {text}"
@@ -172,7 +168,7 @@ class ImageValidatorGUI:
                 bg="black",
                 fg="white",
                 font=("Arial", 12),
-                selectcolor="gray",
+                selectcolor="#d69111",
                 anchor="w",
                 indicatoron=0,
                 width=40,
@@ -181,12 +177,12 @@ class ImageValidatorGUI:
                 bd=2,
                 command=lambda v=value: self.on_criteria_change(v)
             )
-            rb.pack(anchor="w", padx=20, pady=5)
+            rb.pack(anchor="center", pady=5)
             self.radio_buttons[value] = rb
 
-        # Taxonomic Level (only for "bioclip")
-        self.tax_frame = tk.Frame(self.bioclip_frame, bg="black")
-        self.tax_frame.pack(fill=tk.X, pady=5)
+        # ✅ Taxonomic Level: Always visible, but disabled by default
+        self.tax_frame = tk.Frame(self.init_frame, bg="black")
+        self.tax_frame.pack(fill=tk.X, pady=5, padx=20, anchor="center")
 
         tk.Label(
             self.tax_frame,
@@ -194,7 +190,7 @@ class ImageValidatorGUI:
             font=("Arial", 12),
             bg="black",
             fg="white"
-        ).pack(anchor="w")
+        ).pack(anchor="center")
 
         self.tax_var = tk.StringVar(value="")
 
@@ -202,28 +198,31 @@ class ImageValidatorGUI:
             self.tax_frame,
             textvariable=self.tax_var,
             values=["Genus", "Family", "Species", "Order"],
-            state="readonly",
+            state="readonly",  # Initially disabled
             font=("Arial", 12),
             width=15
         )
-        self.tax_combo.pack(anchor="w", pady=(2, 5))
+        self.tax_combo.pack(anchor="center", pady=(2, 5))
 
-        # Feedback labels
+        # ✅ Disable the combo box initially
+        self.tax_combo.config(state="disabled")
+
+        # Feedback label (centered)
         self.feedback_label = tk.Label(
             self.init_frame,
             text="",
             font=("Arial", 12),
             bg="black",
-            fg="#00ff88"
+            fg="#d69111"
         )
         self.feedback_label.pack(pady=5)
 
-        # Start Button
+        # Start Button (centered)
         self.start_button = tk.Button(
             self.init_frame,
             text="▶️ Start Validation",
             font=("Arial", 12, "bold"),
-            bg="#007acc",
+            bg="#0d5b9b",
             fg="white",
             relief=tk.RAISED,
             bd=2,
@@ -260,8 +259,8 @@ class ImageValidatorGUI:
         self.tax_var.set("")
         self.feedback_label.config(text="")
 
-        self.bioclip_frame.pack_forget()
-
+        # ✅ Ensure combo is disabled on reset
+        self.tax_combo.config(state="disabled")
     # ============================================================
     # SELECT IMAGE DIRECTORY
     # ============================================================
@@ -316,9 +315,9 @@ class ImageValidatorGUI:
 
     def on_criteria_change(self, value):
         if value == "bioclip":
-            self.bioclip_frame.pack(fill=tk.X, pady=10)
+            self.tax_combo.config(state="readonly")  # Enable
         else:
-            self.bioclip_frame.pack_forget()
+            self.tax_combo.config(state="disabled")  # Disable
 
     # ============================================================
     # START VALIDATION FLOW
