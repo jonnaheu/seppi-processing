@@ -196,149 +196,148 @@ The script requires two CSV files:
 | all_metadata_combined.csv	| Raw metadata with detection results (used to slice by track ID)|
 | all_metadata_combined_top1_final.csv	| Aggregated metadata from aggregate_filter_meta.py (used for stratification) |
 
-#### Output
-The script creates a timestamped output directory (e.g., strata_2025-04-05_14-30-22) inside the metadata_path.parent, containing:
-```
-strata_2025-04-05_14-30-22/
-├── strata1_2025-04-05_14-30-22.csv               # Pollinator/non-pollinator + prob
-├── strata2_2025-04-05_14-30-22.csv               # Duration-based (pollinator-only)
-├── strata3_hym_2025-04-05_14-30-22.csv           # Hymenoptera (by prob bin)
-├── strata3_lep_2025-04-05_14-30-22.csv           # Lepidoptera (by prob bin)
-├── strata3_col_2025-04-05_14-30-22.csv           # Coleoptera (by prob bin)
-├── strata3_dip_2025-04-05_14-30-22.csv           # Diptera (by prob bin)
-├── strata4_2025-04-05_14-30-22.csv               # Median-based per plant species
-├── strata5_hym_2025-04-05_14-30-22.csv           # One sample per genus (low/high prob)
-├── strata5_lep_2025-04-05_14-30-22.csv           # ...
-├── strata5_col_2025-04-05_14-30-22.csv           # ...
-├── strata5_dip_2025-04-05_14-30-22.csv           # ...
-├── strata6_hym_2025-04-05_14-30-22.csv           # One sample per family (low/high prob)
-├── strata6_lep_2025-04-05_14-30-22.csv           # ...
-├── strata6_col_2025-04-05_14-30-22.csv           # ...
-├── strata6_dip_2025-04-05_14-30-22.csv           # ...
-├── strata7_hym_2025-04-05_14-30-22.csv           # Multiple samples per order
-├── strata7_lep_2025-04-05_14-30-22.csv           # ...
-├── strata7_col_2025-04-05_14-30-22.csv           # ...
-├── strata7_dip_2025-04-05_14-30-22.csv           # ...
-├── strata8_2025-04-05_14-30-22/                  # Most common species
-│   ├── strata8_bombus_rub_2025-04-05_14-30-22.csv
-│   ├── strata8_apis_mel_2025-04-05_14-30-22.csv
-│   └── ...
-└── config.yaml                                  # Full run configuration
-```
+
 
 #### Usage
-1. Run with CLI arguments (recommended for one-off runs):
-```
-python stratified_random_subsampling.py `
-  --metadata-path /path/to/all_metadata_combined.csv `
-  --top1-final-path /path/to/all_metadata_combined_top1_final.csv `
-  --n-per-group-strata1 100 `
-  --n-per-group-strata2 100 `
-  --n-per-group-strata3 50 `
-  --n-per-group-strata4 50 `
-  --n-per-group-strata7 10 `
-  --n-per-group-strata8 10 `
-  --n-common-species-strata8 10 `
-  --seed 123
-  ```
 
-2. Run with config file (config.yaml):
-```
-metadata_path: /path/to/all_metadata_combined.csv
-top1_final_path: /path/to/all_metadata_combined_top1_final.csv
-n_per_group_strata1: 100
-n_per_group_strata2: 100
-n_per_group_strata3: 50
-n_per_group_strata4: 50
-n_per_group_strata7: 10
-n_per_group_strata8: 10
-n_common_species_strata8: 10
-seed: 123
-```
-Run command:
-``` 
-python stratified_random_subsampling.py --config config.yaml
-```
+To create the strata the defined default values (see table below) can be kept or changed both in the CLI or a config file.
 
-3. Mix CLI and config (CLI overrides config):
-```
-python stratified_random_subsampling.py `
-  --config config.yaml `
-  --n-per-group-strata1 200 `
-  --seed 42
-```
-
-**Configuration Parameters**
+**Input Parameters**
 | Argument | Default |	Description |
 |---------------|---------|--------------|
 |--metadata-path|	required	|Path to all_metadata_combined.csv|
 |--top1-final-path|	required|	Path to all_metadata_combined_top1_final.csv|
-|--n-per-group-strata1	|100	|Samples per group in strata1 (pollinator/non-pollinator + prob)|
-|--n-per-group-strata2|	100	|Samples per duration group (pollinator-only)|
-|--n-per-group-strata3|	50|	Samples per probability bin per order (strata3)|
-|--n-per-group-strata4|	50|	Samples per plant species (median-based)|
-|--n-per-group-strata7|	10|	Samples per order (strata7)|
-|--n-per-group-strata8|	10|	Samples per top species (strata8)|
-|--n-common-species-strata8|	10|	Number of top frequent species to include in strata8|
+|--n-per-group-strata1	|500	|Samples per group in strata1 (pollinator/non-pollinator + prob)|
+|--n-per-group-strata2|	500	|Samples per duration group (pollinator-only)|
+|--n-per-group-strata3|	100|	Samples per probability bin per order (0-0.1, 0.1-0.2, ...0.9-1)|
+|--n-per-group-strata4|	100|	Samples per plant species (50:50 below and above the median)|
+|--n-per-group-strata5|	10|	Samples per pollinator genus (50:50 below and above the median)|
+|--n-per-group-strata6|	10|	Samples per pollinator family (50:50 below and above the median)|
+|--n-per-group-strata7|	500|	Samples per order (50:50 below and above the median)|
+|--n-per-group-strata8|	100|	Samples per top species (50:50 below and above the median)|
+|--n-common-species-strata8|	25|	Number of top frequent species to include in strata8|
 |--seed	|123	|Random seed for reproducibility|
 
+**1. Run with CLI and default values (recommended):**
+```
+  python stratified_random_subsampling.py `
+    --metadata-path /path/to/all_metadata_combined.csv `
+    --top1-final-path /path/to/all_metadata_combined_top1_final.csv `
+  ```
 
-### 4. **validate_results_ui.py**: Validation of classification results 
+**2. Run with CLI and set individual values:**
+  ```
+  python stratified_random_subsampling.py `
+    --metadata-path /path/to/all_metadata_combined.csv `
+    --top1-final-path /path/to/all_metadata_combined_top1_final.csv `
+    --n-per-group-strata1 100 `
+    --n-per-group-strata2 100 `
+    --n-per-group-strata7 10 `
+    --n-per-group-strata8 10 `
+    --n-common-species-strata8 10 `
+    --seed 1
+  ```
 
-The **validate_results_ui.py** script provides a graphical user interface (GUI) for manual validation of image subsamples generated by stratified_random_subsampling.py. It enables researchers to inspect and label images based on biological accuracy, ensuring high-quality ground truth for model training, annotation, or evaluation.
-Designed for multi-strata workflows, the tool supports:
+**3. Run with config file (config.yaml):**
 
-    - Pollinator vs. non-pollinator validation
-    - Bioclip classification validation at multiple taxonomic levels (species, genus, family, order)
+Create configuration file (config.yaml) by pasting the following text in a text editor an save as config.yaml, adjust the values as needed.
+```
+metadata_path: /path/to/all_metadata_combined.csv
+top1_final_path: /path/to/all_metadata_combined_top1_final.csv
+n_per_group_strata1: 500
+n_per_group_strata2: 500
+n_per_group_strata3: 100
+n_per_group_strata4: 100
+n_per_group_strata5: 10
+n_per_group_strata6: 10
+n_per_group_strata7: 500
+n_per_group_strata8: 100
+n_common_species_strata8: 25
+seed: 123
+```
+Run:
+```
+ python stratified_random_subsampling.py  --config path/to/config.yaml
+ ```
 
-#### Input Requirements
-| File|	Purpose|
-|-----|--------|
-|strataX_*.csv|	Subsampled metadata csv-file (generated in stratified_random_subsampling.py)|
-|Image directory	|Folder containing all crops (data_processed) |
 
 #### Output
-Output
-The script generates a new CSV file in the same directory as the input metadata:
+The script creates a timestamped output directory (e.g., `strata_YYYY-MM-DD_HH-MM-SS`) inside the metadata_path.parent, containing:
 ```
-strata3_hym_2026-06-24_14-44-47_validated.csv
+strata_YYYY-MM-DD_HH-MM-SS/
+├── strata1_YYYY-MM-DD_HH-MM-SS.csv               # Pollinator/non-pollinator + prob
+├── strata2_YYYY-MM-DD_HH-MM-SS.csv               # Duration-based (pollinator-only)
+├── strata3_hym_YYYY-MM-DD_HH-MM-SS.csv           # Hymenoptera (by prob bin)
+├── strata3_lep_YYYY-MM-DD_HH-MM-SS.csv           # Lepidoptera (by prob bin)
+├── strata3_col_YYYY-MM-DD_HH-MM-SS.csv           # Coleoptera (by prob bin)
+├── strata3_dip_YYYY-MM-DD_HH-MM-SS.csv           # Diptera (by prob bin)
+├── strata4_YYYY-MM-DD_HH-MM-SS.csv               # Median-based per plant species
+├── strata5_hym_YYYY-MM-DD_HH-MM-SS.csv           # One sample per genus (low/high prob)
+├── strata5_lep_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata5_col_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata5_dip_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata6_hym_YYYY-MM-DD_HH-MM-SS.csv           # One sample per family (low/high prob)
+├── strata6_lep_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata6_col_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata6_dip_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata7_hym_YYYY-MM-DD_HH-MM-SS.csv           # Multiple samples per order
+├── strata7_lep_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata7_col_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata7_dip_YYYY-MM-DD_HH-MM-SS.csv           # ...
+├── strata8_YYYY-MM-DD_HH-MM-SS/                  # Most common species
+│   ├── strata8_gen_spe1_YYYY-MM-DD_HH-MM-SS.csv
+│   ├── strata8_gen_spe2_YYYY-MM-DD_HH-MM-SS.csv
+│   └── ...
+└── config.yaml                                  # Full run configuration
 ```
 
-Output Columns Added:
+
+### 4. Validation of classification results: **validate_results_ui.py**
+
+**Short description:** The **validate_results_ui.py** script provides a graphical user interface (GUI) for manual validation of image subsamples generated by stratified_random_subsampling.py. 
+
+#### Usage
+**1. Run the GUI**
+```
+  python validate_results_ui.py
+```
+
+**2. Setup a validation run**
+![Screenshot GUI: Setup Validation Run](images/screenshot_gui_window1.png "Screenshot GUI: Setup Validation Run")
+
+    1. Select Image Directory → Browse to the processed data folder containing the crops
+    2. Select Metadata CSV → Choose a csv file with the subsamples created in the previous step
+    3. Choose Validation Mode:\
+        Pollinator: For Strata 1–2\
+        Bioclip: For Strata 3–8\
+      *4. If selected "Validate Bioclip..." -> Select Taxonomic Level that will be validated*
+    5. Click "▶️ Start Validation" (this might take a few minutes until a new window opens) 
+
+**3. Validate images**
+![Screenshot GUI: Validate Images](images/screenshot_gui_window2.png "Screenshot GUI: Validate Images")
+
+    1. Display of crop
+    2. Display of respective classification result at selected tax. level
+    3. Three buttons for validation -->
+    4. Label each image using the buttons
+    5. Add comments if needed
+    6. When all crops are validate the output file is automatically saved
+    7. Click "💾 Save & Return to Setup" when validation needs to be interrupted (returning is not possible)
+
+
+#### Output
+
+The script generates a new CSV file in the same directory as the input metadata and adds the suffix "_validated" to the filename (e.g. `strata3_hym_2026-06-24_14-44-47_validated.csv`)
+
+All original metadata is preserved and these two columns are added:  
 |Column	|Description|
 |-------|-----------|
 |valX	|Validation label (e.g., pollinator, correct)|
 |comment	| User-provided notes (e.g., "Corrected to Bombus terrestris")|
 
 
-All original metadata is preserved.
 
-#### Usage
-1. Run the GUI
-```
-python validate_results_ui.py
-```
 
-2. Workflow
-
-    1. Select Image Directory → Browse to the processed data folder containing the crops
-    2. Select Metadata CSV → Choose a csv file with the subsamples
-    3. Choose Validation Mode:\
-        Pollinator: For Strata 1–2\
-        Bioclip: For Strata 3–8\
-    4. Select Taxonomic Level (if Bioclip): Species, Genus, Family, Order
-    5. Click "▶️ Start Validation"
-    6. Label each image using the buttons
-    7. Add comments if needed
-    8. When all crops are validate the output file is automatically saved
-     --> Click "💾 Save & Return to Setup" when validation needs to be interrupted (returning is not possible)
-
-#### Example Output (CSV)
-|crop_path	|bioclip_species|	val3_species|	comment|
-|-----------|---------------|-------------|--------|
-|crop_001.jpg	|Bombus terrestris|	correct	|correct at morphospecies level|
-|crop_002.jpg	|Apis mellifera	|incorrect	|Not a bee, likely a fly|
-|crop_003.jpg| Lasioglossum pauxillum	|Unclear |Not sure if a bee is present or not in the image|
 
 ### 5. **validation_statistics.py**: Accuracy of classification and error rate
 
