@@ -101,26 +101,26 @@ Examples:
     parser.add_argument(
         "--n-per-group-strata1",
         type=int,
-        default=100,
-        help="Number of subsamples per group for strata1 (pollinator/non-pollinator + prob) (default: 100)"
+        default=500,
+        help="Number of subsamples per group for strata1 (pollinator/non-pollinator + prob) (default: 500)"
     )
     parser.add_argument(
         "--n-per-group-strata2", 
         type=int, 
-        default=100, 
-        help="Number of subsamples per duration group for strata2 (default: 100)"
+        default=500, 
+        help="Number of subsamples per duration group for strata2 (default: 500)"
     )
     parser.add_argument(
         "--n-per-group-strata3",
         type=int,
-        default=50,
-        help="Number of subsamples per probability bin for strata3 (default: 50)"
+        default=100,
+        help="Number of subsamples per probability bin for strata3 (default: 100)"
     )
     parser.add_argument(
         "--n-per-group-strata4",
         type=int,
-        default=50,
-        help="Number of subsamples per plant species for strata4 (default: 50)"
+        default=100,
+        help="Number of subsamples per plant species for strata4 (default: 100)"
     )
     parser.add_argument(
     "--n-per-group-strata5",
@@ -137,20 +137,20 @@ Examples:
     parser.add_argument(
         "--n-per-group-strata7",
         type=int,
-        default=10,
-        help="Number of subsamples per species for strata7 (default: 10)"
+        default=500,
+        help="Number of subsamples per species for strata7 (default: 500)"
     )
     parser.add_argument(
         "--n-per-group-strata8",
         type=int,
-        default=10,
-        help="Number of subsamples per species for strata8 (default: 10)"
+        default=100,
+        help="Number of subsamples per species for strata8 (default: 100)"
     )
     parser.add_argument(
         "--n-common-species-strata8",
         type=int,
-        default=10,
-        help="Number of top frequent species to subsample from in strata8 (default: 10)"
+        default=25,
+        help="Number of top frequent species to subsample from in strata8 (default: 25)"
     )
     parser.add_argument(
         "--seed",
