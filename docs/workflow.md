@@ -1,176 +1,176 @@
-# Workflow to aggregate and filter metadata files and validate classification results from the post-processing pipeline using BioCLIP2 classifier
+# Workflow to aggregate and filter metadata and validate classification results 
 
-This script serves to test and explore the results obtained from SEPPI post-processing pipeline that classifies the captured flower visitor images.
+This script serves to further process the results obtained from the SEPPI post-processing pipeline that classifies the captured flower visitor images using BioClip2.
 
 All data was processed with the following configurations: 
 - Image processing: ‘Crop Detections’ and ‘Move Crops by Classification’ was enabled 
 - Classification:  BioCLIP2 enabled, batch size = 8
-- Metadata Processing: everything disabled
+- Metadata Processing: everything disabled (if not diabled, two more csv metadata files will have been created)
 
 **OUTPUT of the Post-processing pipeline:**
-- images: crops moved to folders by genus classification result
+```
+data_processed/
+├── TIMESTAMP-of-PROCESSING_DATE-RECORDING_processed          # For each post-processing run one folder is created
+    ├── images                   
+        ├── crops                
+            ├── insect          
+                ├── GENUS1                                    # Folder containing all crops classified as this genus
+                ├── GENUS2                                    # ...
+                ├── ...
+    ├── metadata                                              # Folder containing the output metadata files
+        ├── YYYY-MM-DD_metadata_merged.csv                    # Metadata of each insect detection
+        ├── YYYY-MM-DD_metadata_merged_crops.csv              # Joined path to crop per detection
+        └── YYYY-MM-DD_metadata_merged_crops_classified.csv   # Classification results of each crop
+    ├── YYYY-MM-DD_HH-MM-SS_config.json                       # Configuration of post-processing pipeline during classification run
+    ├── YYYY-MM-DD_HH-MM-SS_stats.json                        # Statistics (duration) for different steps of classification run
+    └── pipeline.log                                          # Log of terminal output during classification run
+    
+```
 
-- metadata: 3 CSV files:
-
-   - …metadata_merged.csv
-   - …metadata_merged_crops.csv
-   - …metadata_merged_crops_classified.csv
-
-    2 json files:
-
-   - …config_mini.json = applied configuration
-   - …stats.json = duration of processing steps 
-
-    1 txt file:
-
-    - pipeline_log.txt
 
 ## Overview of computational steps of the workflow:
 
 ### Setting up the work enviroment
 
-1. Download `SEPPI-workflow-processing` scripts either using Git directly from github OR download the folder from the shared location (e.g. Google Drive). **-> More detailed instructions were shared via email.**
+1. Download `SEPPI-workflow-processing` scripts from github (clone it using Git/GitBash - recommended) **OR** download the folder from the shared location (e.g. Google Drive).
 3. Open VScode and open the folder under `File` > `Open Folder...`
-4. Open a new terminal and run the following code to install all required packages (NOTE: you have to have python already installed to run this):
+4. Open a new terminal and run the following code to install all required packages (NOTE: you have to have python already installed):
 ```{}
-pip install -r requirements.txt
+  pip install -r requirements.txt
 ```
 
 After setting up the work environment you can start running the next scripts one after another. Therefore you have to change the directory in the terminal to `scripts`.
 
-Run in a new Terminal: ``` cd scripts ``` 
+Run in a new Terminal: 
+```
+  cd scripts 
+``` 
 
-### 1. **merge_meta_and_flower.py**: Find, load, and merge all metadata files 
+### 1. Find, load, and merge all metadata files: **merge_meta_and_flower.py**
 
 **Short description**: `merge_meta_and_flower.py` recursively searches the raw and processed data directory for config json-files and metadata csv-files matching a given filename pattern (e.g. with suffix: `"[...]metadata_merged_crops_classified.csv"`), merges them into a single output csv, and appends source-file paths and plant species information in additional columns. The script reports the number of processed files and total rows (detections).
 The scripts performs three key steps in sequence:
-1. Merges all JSON configuration files (YYYY-MM-DD_hh-mm-ss_config_seppi_flower.json) into a single `merged_config_seppi_flower.csv`
-2. Merges all processed metadata CSVs (e.g., *metadata_merged_crops_classified.csv) into memory (no temporary file)
-3. Joins the plant_species column from the config file to the metadata based on cam_ID and time session boundaries
-4. Saves a csv metadata file containig all single files plus the flower species information from the config files. `all_metadata_combined.csv`
+1. Merges all JSON configuration files (YYYY-MM-DD_hh-mm-ss_config_seppi_flower/platform.json) > `merged_config_seppi_flower.csv`
+2. Merges all processed metadata CSVs (e.g., *metadata_merged_crops_classified.csv)  > `merged_metadata.csv`
+3. Joins the plant_species column from the config file to the metadata based on cam_ID and time session boundaries > `all_metadata_combined.csv`
 
 
 
-#### USAGE
+#### Usage
 
-**Basic command**
 ```
-python merge_meta_and_flower.py
+  python merge_meta_and_flower.py
 ```
 
-The script will prompt you for four inputs interactively:
-#### Input Parameters
-
+The script will prompt you for three inputs:
 | Input Parameter | Description |
 |-----------------|-------------|
 | `Path to raw data directory` | Path to the raw data directory (unprocessed data from camtraps) containing JSON config files (e.g., `D:\SEPPI_CAMTRAPS_DE\2025`) |
 | `Path to output directory` | Create a folder where you want to save the output of all the next steps (e.g., `C:\Users\NAME\output`) |
 | `Path to processed data directory` | Path to the processed data directory containing processed metadata CSVs (e.g., `data_processed`) |
-**Examples**
 
-**Exemplary Terminal In- and Output**
-```
-=== SEPPI Data Pipeline: Combine JSON → Merge CSV → Join with Plant Species ===
 
-Enter path to raw data directory (contains JSONs: [date]_config_seppi_flower.json): E:\SEPPI_CAMTRAPS_DE\2025
-
-Enter output path for output directory (call the file: merged_config_seppi_flower.csv): 
-
-Enter path to processed data directory (contains CSVs: [date]_metadata_merged_crops_classified.csv): F:\2025_processed
+#### Output
 
 ```
+output/
+├── YYYY-MM-DD_HH-MM-SS_all_metadata_combined.csv   # Metadata of each insect detection
+├── YYYY-MM-DD_HH-MM-SS_merged_config_json.csv      # Joined path to crop per detection
+└── YYYY-MM-DD_HH-MM-SS_merged_metadata.csv         # Classification results of each crop    
+```
 
-**Output**
-
-- 3 CSV files at specified output location 
-
-**IMPORTANT**: Any typos that were made when entering the flower species information in the field into the webapp will now appear in the data. Make sure your monitored flower species were spelled correctly and best clean out the output csv files now.
-
-If you have not use the option to enter the flower species information
+> **IMPORTANT**: Any typos that were made when entering the flower species information in the field into the webapp will now appear in the data. Make sure your monitored flower species were spelled correctly and best clean out the output csv files now.  
+> If you have not use the option to enter the flower species information, you need to join the flower species information per recording intervall individually.
 
 
-### 2. **aggregate_filter_meta.py**: Aggregate and filter metadata (by detection confidence, by tracking duration, by classification probability)
+### 2. Aggregate and filter metadata: **aggregate_filter_meta.py**: 
 
 **Short description**: The `aggregate_filter_meta.py` script processes raw classified metadata to:
 
-- Filter detections based on confidence, duration, and classification probability
-- Aggregate track-level statistics (e.g., duration, average confidence, bounding box size)
-- Select the most confident classification per track using weighted probability
-  
-- Generate two output files:\
-  --*_top1_all.csv – Aggregated classification results per track with top1 probability \
-  --*_top1_final.csv – Aggregated classification results per track + tracking statistics (duration etc.)
+1. Filter detections based on confidence, duration, and classification probability
+2. Aggregate track-level statistics (e.g., duration, average confidence, bounding box size)
+3. Select the most confident classification per track using weighted probability
+4. Plot four graphs illustrating the distribution of tracking IDs across different filtering options
 
-The script also plots four graphs illustrating the distribution of tracking IDs across different filtering options.
+#### Usage
 
-It supports both Ultralytics-style (top1, top1_prob) and BioCLIP-style (bioclip_species, bioclip_score) classification formats, preserving taxonomic hierarchy when applicable.
+The script can be run with a configuration file (config.yaml) [1] or directly by specifying all input parameters in the command line [2], or a mixed approach [3].
 
-**Output** \
-The script creates a new folder named `run_YYYY-MM-DD-HH-MM-SS` inside the `output_dir`, containing:
+|Input parameter | Values | Default | Description |
+|----------------|--------|---------|-------------|
+|<metadata_path> | path/YYYY-MM-DD_HH-MM-SS_all_metadata_combined.csv | *none* | Path to combined metadata file (output previous step) |
+|<output_directory>| path/output | *none* | Path to location where outputfolder will be created in|
+|`--min-conf` | 0.3 - 1 | *none* | Define minimum detection confidence |
+|`--max-conf` |0 - 1 |  *none* | Define maximum detection confidence |
+|`--min-duration`| 0 - ~ |  *none* | Define minimum duration of tracking event|
+|`--max-duration` | 0 - ~ |  *none* | Define maximum duration of tracking event |
+|`--min-prob` | 0 - 1 |  *none* | Define minimum classification probability (BioCLIP) |
+|`--max-prob` | 0 - 1 |  *none* | Define maximum classification probability (BioCLIP) |
+
+To define values the following operators can be used: `==`, `>=`, `<=`, `<`, `>`
+
+> **IMPORTANT:** If no value will be defined, the filtering option is skipped. This is what we want for the first run.
+
+
+**1. Run with config file:**  
+
+Create configuration file (config.yaml) by pasting the following text in a text editor an save as `config.yaml`, adjust the values as needed.
 ```
-run_2026-04-23-14-26-00/
-├── all_metadata_combined_top1_all.csv          # Aggregated classification per track
-├── all_metadata_combined_top1_final.csv        # Aggregated classification per track + track statistics
-├── config.yaml                                # Full run configuration
-└── plots/
-    ├── pollinator_stacked_distribution.png      # Classified Pollinator orders vs non-pollinator orders (stacked)
-    ├── pollinator_duration_distribution.png     # Duration distribution (0, >0-10, >10-100, >100-500, >500)
-    ├── pollinator_probability_facetted_histogram.png  # Histograms of top1 weighted probability by order (4 subplots)
-    └── pollinator_confidence_facetted_histogram.png   # Histograms of mean detection confidence by order (4 subplots)
-```
-The four plots that are created serve to visually examine the distribution of the aggregated and filter dataset.
-
-#### USAGE
-1. Set filtering threshold in command line interface (CLI) (paste in one line):
-```{}
-python aggregate_filter_meta.py <metadata_path> <output_dir> 
-  --min-conf '>=0.3'          
-  --max-conf '==0.4'          
-  --min-duration '>1.0'      
-  --max-duration '<600.0'     
-  --min-prob '>=0.001'        
-  --max-prob '1.0'           
-```
-`input_metadata_file`: Path to combined metadata file (Step 1)\
-`output_dir`: Path to location where outputfolder will be created in.
-
-  `--min-conf '>=0.3'`          ← Define minimum detection confidence \
-  `--max-conf '==0.4'`          ← Define maximum detection confidence \
-  `--min-duration '>1.0'`       ← Define minimum duration of tracking event \
-  `--max-duration '<600.0'`     ← Define maximum duration of tracking event \
-  `--min-prob '>=0.001'`        ← Define minimum classification probability (BioCLIP) \
-  `--max-prob '1.0'`            ← Define maximum classification probability (BioCLIP) \
-
-
-
-2. Run with config files:
-```{}
-python aggregate_filter_meta.py data/results.csv output/ --config config.yaml
-```
-3. Config file (config.yaml):
-```
-metadata_path: ~\all_metadata_combined.csv
-output_dir: ~\output\run_YYYY-MM-DD-HH-MM-SS
-frame_width: 1.0
-frame_height: 1.0
-min_conf: '>=0.3'
+metadata_path: path/to/YYYY-MM-DD_HH-MM-SS_all_metadata_combined.csv
+output_dir: path/to/output
+min_conf: >=0.3
 max_conf: ==0.4
-min_duration: '>1.0'
+min_duration: >1.0
 max_duration: <600.0
-min_prob: '>=0.001'
+min_prob: >=0.001
 max_prob: null
 ```
 
-4. Mix CLI and config:
+Run: 
 ```{}
-python aggregate_filter_meta.py data/results.csv outputs/ --config config.yaml --min-conf 0.9
+    python aggregate_filter_meta.py path/YYYY-MM-DD_HH-MM-SS_all_metadata_combined.csv path/output `
+   --config path/to/config.yaml 
+``` 
+
+
+
+**2. Set filtering threshold in command line interface (CLI):**   
+
+Paste in one line or use separator ` 
+
+```
+  python aggregate_filter_meta.py <metadata_path> <output_dir> 
+    --min-conf '>=0.3'          
+    --max-conf '==0.4'          
+    --min-duration '>1.0'      
+    --max-duration '<600.0'     
+    --min-prob '>=0.001'        
+    --max-prob '1.0'           
+```
+
+**3. Mix CLI and config:**
+
+Example:
+```
+  python aggregate_filter_meta.py <metadata_path> <output_dir> --config config.yaml --min-conf 0.9
+```
+
+#### Output  
+The script creates a new folder named `run_YYYY-MM-DD-HH-MM-SS` inside the `output_dir`, containing:
+```
+run_YYYY-MM-DD-HH-MM-SS/
+├── all_metadata_combined_top1_all.csv                  # Aggregated classification results per track with top1 probability
+├── all_metadata_combined_top1_final.csv                # Aggregated classification results per track + tracking statistics (duration etc.)
+├── config.yaml                                         # Full run configuration
+└── plots/
+    ├── pollinator_stacked_distribution.png             # Classified Pollinator orders vs non-pollinator orders (stacked)
+    ├── pollinator_duration_distribution.png            # Duration distribution (0, >0-10, >10-100, >100-500, >500)
+    ├── pollinator_probability_facetted_histogram.png   # Histograms of top1 weighted probability by order (4 subplots)
+    └── pollinator_confidence_facetted_histogram.png    # Histograms of mean detection confidence by order (4 subplots)
 ```
 
 
-
-
-
-### 3 **stratified_random_subsampling.py**: Stratified random selection of crop images for validation 
+### 3 Stratified random selection of crop images for validation: **stratified_random_subsampling.py** 
 
 The `stratified_random_subsampling.py` script performs multi-level stratified random sampling on aggregated pollinator detection metadata to generate balanced, representative, and reproducible subsamples for downstream tasks such as classification validation.
 
@@ -178,18 +178,18 @@ This script is designed to work after aggregate_filter_meta.py, using its output
 
 #### Definition of strata:
 
-Multi-strata sampling across 8 distinct levels:
+|Strata | Description |
+|-------|-------------|
+|Strata1| Pollinator vs. non-pollinator + high/low classification probability|
+|Strata2| Duration-based (single, multiple, long) for pollinators only|
+|Strata3| By major pollinator order (Hymenoptera, Lepidoptera, Coleoptera, Diptera), stratified by probability bins (0.0–0.1, ..., 0.9–1.0)|
+|Strata4| Median-based high/low probability per plant species (pollinators with duration > 0)|
+|Strata5| One sample per genus (low/high prob) for each order|
+|Strata6| One sample per family (low/high prob) for each order|
+|Strata7| Multiple samples per order (up to n_per_group_strata7) split by median probability|
+|Strata8| Top N most frequent species, subsampled by median-based probability per species |
 
-    Strata1: Pollinator vs. non-pollinator + high/low classification probability
-    Strata2: Duration-based (single, multiple, long) for pollinators only
-    Strata3: By major pollinator order (Hymenoptera, Lepidoptera, Coleoptera, Diptera), stratified by probability bins (0.0–0.1, ..., 0.9–1.0)
-    Strata4: Median-based high/low probability per plant species (pollinators with duration > 0)
-    Strata5: One sample per genus (low/high prob) for each order
-    Strata6: One sample per family (low/high prob) for each order
-    Strata7: Multiple samples per order (up to n_per_group_strata7) split by median probability
-    Strata8: Top N most frequent species, subsampled by median-based probability per species
-
-#### Input
+#### Usage
 The script requires two CSV files:
 | File	| Purpose |
 |-------|---------|
@@ -198,7 +198,8 @@ The script requires two CSV files:
 
 #### Output
 The script creates a timestamped output directory (e.g., strata_2025-04-05_14-30-22) inside the metadata_path.parent, containing:
-```strata_2025-04-05_14-30-22/
+```
+strata_2025-04-05_14-30-22/
 ├── strata1_2025-04-05_14-30-22.csv               # Pollinator/non-pollinator + prob
 ├── strata2_2025-04-05_14-30-22.csv               # Duration-based (pollinator-only)
 ├── strata3_hym_2025-04-05_14-30-22.csv           # Hymenoptera (by prob bin)
