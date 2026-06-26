@@ -80,7 +80,7 @@ output/
 ```
 
 > **IMPORTANT**: Any typos that were made when entering the flower species information in the field into the webapp will now appear in the data. Make sure your monitored flower species were spelled correctly and best clean out the output csv files now.  
-> If you have not use the option to enter the flower species information, you need to join the flower species information per recording intervall individually.
+> If you have not used the option to enter the flower species information in the webapp, you need to join the flower species information per recording intervall seperatly.
 
 
 ### 2. Aggregate and filter metadata: **aggregate_filter_meta.py**: 
@@ -301,9 +301,10 @@ strata_YYYY-MM-DD_HH-MM-SS/
 ```
   python validate_results_ui.py
 ```
+  
 
 **2. Setup a validation run**
-![Screenshot GUI: Setup Validation Run](images/screenshot_gui_window1.png "Screenshot GUI: Setup Validation Run")
+![Screenshot GUI: Setup Validation Run](images/screenshot_gui_window1.png "Screenshot GUI: Setup Validation Run")  
 
     1. Select Image Directory → Browse to the processed data folder containing the crops
     2. Select Metadata CSV → Choose a csv file with the subsamples created in the previous step
@@ -318,11 +319,21 @@ strata_YYYY-MM-DD_HH-MM-SS/
 
     1. Display of crop
     2. Display of respective classification result at selected tax. level
-    3. Three buttons for validation -->
-    4. Label each image using the buttons
-    5. Add comments if needed
-    6. When all crops are validate the output file is automatically saved
-    7. Click "💾 Save & Return to Setup" when validation needs to be interrupted (returning is not possible)
+    3. Three buttons for validation: Correct, Incorrect, and Unclear - here a few guidelines for the validation:
+        Correct > choose if the result is possibly correct 
+        Incorrect > choose if result can definitively be contradicted:
+                      > if taxa does not occur in geographic region
+                      > if no insect specimen is present in the image
+                      > if a distinct character is visible of another taxa
+                      > if an alternative taxa can be identified (add your result in the comment section)
+        Unclear > choose if you are very uncertain with the result or different question arises
+
+    4. If you want to change your validation input from a previous crop you can use this button to go back, but then need to reenter all results after
+    5. Make useful comments (e.g. if you know the correct taxa)
+    6. Crop count in this validation run, shows current and total number of crops
+    7. With this button you can save your current validation effort and return to the setup window, however it is not possible to pick up validation again where you saved it previously > you will have to start from the beginning again (use with caution! Best to finish one run entirely)
+
+    Once
 
 
 #### Output
@@ -339,6 +350,6 @@ All original metadata is preserved and these two columns are added:
 
 
 
-### 5. **validation_statistics.py**: Accuracy of classification and error rate
+### 5. Accuracy of classification and error rate: **validation_statistics.py** 
 
 Not yet developed.
