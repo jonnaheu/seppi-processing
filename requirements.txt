@@ -2,3 +2,4 @@ polars>=0.20
 pyyaml>=6.0
 matplotlib>=3.7
 pyarrow>=15.0
+pandas>=2.0
