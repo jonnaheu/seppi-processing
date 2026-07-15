@@ -18,11 +18,15 @@ df = pd.DataFrame()
 
 image_paths = []
 valid_crop_values = []  # "valid" or "dismissed"
-expert_id_values = []  # Always saved from comment
+expert_id_free_values = []  # Free text
+expert_id_checklist_values = []  # Selected from checklist
 
 output_path = Path()
 image_dir = Path()
 metadata_path = Path()
+
+# Species list (loaded from CSV)
+species_list = []
 
 
 # ============================================================
@@ -132,6 +136,37 @@ class ImageValidatorGUI:
         )
         self.csv_button.pack(anchor="center")
 
+        # Species Checklist (auto-loaded)
+        self.species_file_label = tk.Label(
+            self.init_frame,
+            text="📁 Species Checklist (auto-loaded):",
+            font=("Arial", 12),
+            bg="black",
+            fg="white"
+        )
+        self.species_file_label.pack(anchor="center", pady=(10, 0))
+
+        self.species_path_label = tk.Label(
+            self.init_frame,
+            text="checklist_syrphids_simple.csv",
+            font=("Arial", 12),
+            bg="black",
+            fg="#888888",
+            wraplength=win_w - 100,
+            justify=tk.LEFT
+        )
+        self.species_path_label.pack(anchor="center", pady=(2, 5))
+
+        # ✅ Create feedback_label here (after init_frame)
+        self.feedback_label = tk.Label(
+            self.init_frame,
+            text="",
+            font=("Arial", 12),
+            bg="black",
+            fg="#d69111"
+        )
+        self.feedback_label.pack(pady=5)
+
         # Row Count Display (NEW: shows number of rows after CSV selected)
         self.row_count_label = tk.Label(
             self.init_frame,
@@ -141,16 +176,6 @@ class ImageValidatorGUI:
             fg="#00ff88"
         )
         self.row_count_label.pack(pady=5)
-
-        # Feedback label (centered)
-        self.feedback_label = tk.Label(
-            self.init_frame,
-            text="",
-            font=("Arial", 12),
-            bg="black",
-            fg="#d69111"
-        )
-        self.feedback_label.pack(pady=5)
 
         # Start Button (centered)
         self.start_button = tk.Button(
@@ -169,21 +194,46 @@ class ImageValidatorGUI:
         self.reset()
 
     # ============================================================
+    # LOAD SPECIES LIST FROM CSV (now safe to use feedback_label)
+    # ============================================================
+
+    def load_species_list(self):
+        global species_list
+        script_dir = Path(__file__).parent  # Same folder as script
+        checklist_path = script_dir / "checklist_syrphids_simple.csv"
+
+        if not checklist_path.exists():
+            self.feedback_label.config(text="⚠️ Checklist file not found: checklist_syrphids_simple.csv")
+            return
+
+        try:
+            species_df = pd.read_csv(checklist_path)
+            if "species" not in species_df.columns:
+                self.feedback_label.config(text="⚠️ Checklist must have a 'species' column")
+                return
+            species_list = species_df["species"].dropna().astype(str).tolist()
+            self.feedback_label.config(text=f"✅ Loaded {len(species_list)} species")
+        except Exception as e:
+            self.feedback_label.config(text=f"⚠️ Error loading checklist: {e}")
+
+    # ============================================================
     # RESET
     # ============================================================
 
     def reset(self):
-        global current_index, df, image_paths, valid_crop_values, expert_id_values
-        global output_path, image_dir, metadata_path
+        global current_index, df, image_paths, valid_crop_values, expert_id_free_values, expert_id_checklist_values
+        global output_path, image_dir, metadata_path, species_list
 
         current_index = 0
         df = pd.DataFrame()
         image_paths = []
         valid_crop_values = []
-        expert_id_values = []
+        expert_id_free_values = []
+        expert_id_checklist_values = []
         output_path = Path()
         image_dir = Path()
         metadata_path = Path()
+        species_list = []
 
         self.dir_path_label.config(text="Not selected")
         self.csv_path_label.config(text="Not selected")
@@ -244,6 +294,13 @@ class ImageValidatorGUI:
             messagebox.showwarning("Missing CSV", "Please select a valid metadata CSV.")
             return
 
+        # ✅ Load species list AFTER GUI is fully initialized
+        self.load_species_list()
+
+        if not species_list:
+            messagebox.showwarning("No Species List", "Species checklist not loaded.")
+            return
+
         # Load CSV
         try:
             global df
@@ -262,9 +319,10 @@ class ImageValidatorGUI:
                 return
 
             # Reinitialize validation values
-            global valid_crop_values, expert_id_values
+            global valid_crop_values, expert_id_free_values, expert_id_checklist_values
             valid_crop_values = ["valid"] * len(df)  # Default: "valid"
-            expert_id_values = [None] * len(df)
+            expert_id_free_values = [None] * len(df)
+            expert_id_checklist_values = [None] * len(df)
 
             # Build filename index
             filename_to_path = {}
@@ -293,11 +351,11 @@ class ImageValidatorGUI:
             messagebox.showerror("Error", f"Failed to load CSV:\n{e}")
 
     # ============================================================
-    # CREATE VALIDATION WINDOW (IMAGE + RADIO BUTTONS + COMMENT + SUBMIT + BACK)
+    # CREATE VALIDATION WINDOW (IMAGE + TWO FIELDS + RADIO BUTTONS + SUBMIT + BACK)
     # ============================================================
 
     def create_validation_window(self):
-        global df, image_paths, valid_crop_values, expert_id_values, output_path
+        global df, image_paths, valid_crop_values, expert_id_free_values, expert_id_checklist_values, output_path
 
         df = df.copy()
 
@@ -324,21 +382,21 @@ class ImageValidatorGUI:
         )
         self.image_label.pack(expand=True, fill=tk.BOTH)
 
-        # Comment Frame (centered)
-        self.comment_frame = tk.Frame(self.center_frame, bg="black")
-        self.comment_frame.pack(pady=10)
+        # Free Text Field (top)
+        self.free_frame = tk.Frame(self.center_frame, bg="black")
+        self.free_frame.pack(pady=10)
 
-        self.comment_title = tk.Label(
-            self.comment_frame,
-            text="🔍 Identification result",
+        self.free_label = tk.Label(
+            self.free_frame,
+            text="📝 Free Text Entry",
             font=("Arial", 12, "bold"),
             bg="black",
             fg="#00ff88"
         )
-        self.comment_title.pack(anchor="center", pady=(0, 5))
+        self.free_label.pack(anchor="center", pady=(0, 5))
 
-        self.comment_text = tk.Text(
-            self.comment_frame,
+        self.free_text = tk.Text(
+            self.free_frame,
             height=3,
             font=("Arial", 12),
             wrap=tk.WORD,
@@ -349,7 +407,39 @@ class ImageValidatorGUI:
             padx=8,
             pady=8
         )
-        self.comment_text.pack(fill=tk.X, pady=2)
+        self.free_text.pack(fill=tk.X, pady=2)
+
+        # Checklist Dropdown (below free text)
+        self.checklist_frame = tk.Frame(self.center_frame, bg="black")
+        self.checklist_frame.pack(pady=10)
+
+        self.checklist_label = tk.Label(
+            self.checklist_frame,
+            text="🔍 Species Checklist",
+            font=("Arial", 12, "bold"),
+            bg="black",
+            fg="#00ff88"
+        )
+        self.checklist_label.pack(anchor="center", pady=(0, 5))
+
+        # Autocomplete Combobox (readonly)
+        self.checklist_var = tk.StringVar()
+        self.checklist_combo = ttk.Combobox(
+            self.checklist_frame,
+            textvariable=self.checklist_var,
+            values=species_list,
+            state="readonly",  # ✅ No free text allowed
+            font=("Arial", 12),
+            width=30
+        )
+        self.checklist_combo.pack(fill=tk.X, pady=2)
+
+        # ✅ BINDING: Open dropdown on click
+        self.checklist_combo.bind("<Button-1>", self.on_checklist_click)
+
+        # ✅ BINDING: Filter on key release
+        self.checklist_combo.bind("<KeyRelease>", self.on_checklist_key_release)
+        self.checklist_combo.bind("<<ComboboxSelected>>", self.on_checklist_selected)
 
         # Radio Buttons Frame (same line, side-by-side)
         self.radio_frame = tk.Frame(self.center_frame, bg="black")
@@ -453,6 +543,52 @@ class ImageValidatorGUI:
         self.show_next_image()
 
     # ============================================================
+    # AUTOCOMPLETE: FILTER LIST ON KEY RELEASE (FIXED)
+    # ============================================================
+
+    def on_checklist_key_release(self, event):
+        # Get typed text
+        typed = self.checklist_var.get().lower()
+
+        # Clear values if empty
+        if not typed:
+            self.checklist_combo['values'] = species_list
+            return
+
+        # Filter list
+        filtered = [s for s in species_list if typed in s.lower()]
+        self.checklist_combo['values'] = filtered
+
+        # If matches found, show dropdown
+        if filtered:
+            # Force dropdown to open
+            self.checklist_combo.event_generate('<Down>')
+            # Ensure focus stays
+            self.checklist_combo.focus_force()
+        else:
+            # No matches → clear
+            self.checklist_combo['values'] = []
+
+    # ============================================================
+    # ON CLICK: FORCE DROPDOWN TO OPEN
+    # ============================================================
+
+    def on_checklist_click(self, event):
+        """Force the dropdown to open when clicking on the empty combobox."""
+        self.checklist_combo.event_generate('<Down>')
+        self.checklist_combo.focus_force()
+
+    # ============================================================
+    # ON SELECTED: Save selected species
+    # ============================================================
+
+    def on_checklist_selected(self, event):
+        # When user selects from dropdown
+        selected = self.checklist_var.get()
+        if selected:
+            self.checklist_var.set(selected)
+
+    # ============================================================
     # SET VALID CROP (called by radio button)
     # ============================================================
 
@@ -462,14 +598,10 @@ class ImageValidatorGUI:
 
         # Update button appearance
         if value == "valid":
-            # Keep crop: green
             self.keep_radio.config(bg="#00aa00", fg="white", relief=tk.SUNKEN, bd=4)
-            # Dismiss crop: black
             self.dismiss_radio.config(bg="black", fg="white", relief=tk.RAISED, bd=2)
         else:
-            # Dismiss crop: red
             self.dismiss_radio.config(bg="#aa0000", fg="white", relief=tk.SUNKEN, bd=4)
-            # Keep crop: black
             self.keep_radio.config(bg="black", fg="white", relief=tk.RAISED, bd=2)
 
     # ============================================================
@@ -519,10 +651,12 @@ class ImageValidatorGUI:
 
             self.status_label.config(text=f"Status: {current_index + 1}/{len(df)}")
 
-            # Load saved comment (if any) into the text box
-            original_comment = expert_id_values[current_index] or ""
-            self.comment_text.delete(1.0, tk.END)
-            self.comment_text.insert(tk.END, original_comment)
+            # Load saved values
+            free_comment = expert_id_free_values[current_index] or ""
+            checklist_comment = expert_id_checklist_values[current_index] or ""
+            self.free_text.delete(1.0, tk.END)
+            self.free_text.insert(tk.END, free_comment)
+            self.checklist_var.set(checklist_comment)
 
             # Update radio button state
             if valid_crop_values[current_index] == "valid":
@@ -536,17 +670,18 @@ class ImageValidatorGUI:
             self.image_label.config(image="", text=f"Error: {e}")
 
     # ============================================================
-    # SUBMIT LABEL (WITH WARNING ON EMPTY COMMENT)
+    # SUBMIT LABEL (WITH WARNING ON EMPTY FIELDS)
     # ============================================================
 
     def submit_label(self):
-        global current_index, valid_crop_values, expert_id_values
+        global current_index, valid_crop_values, expert_id_free_values, expert_id_checklist_values
 
-        # Get current comment
-        comment_text = self.comment_text.get(1.0, tk.END).strip()
+        # Get current values
+        free_text = self.free_text.get(1.0, tk.END).strip()
+        checklist_text = self.checklist_var.get().strip()
 
-        # Check if valid_crop is "valid" AND comment is empty
-        if valid_crop_values[current_index] == "valid" and not comment_text:
+        # Check if valid_crop is "valid" AND both fields are empty
+        if valid_crop_values[current_index] == "valid" and not free_text and not checklist_text:
             # Show warning
             result = messagebox.askyesno(
                 title="⚠️ Warning",
@@ -561,8 +696,9 @@ class ImageValidatorGUI:
                 # User said "No" → stay on current image
                 return  # Do not advance
 
-        # Save comment to expert_id
-        expert_id_values[current_index] = comment_text or None
+        # Save both values
+        expert_id_free_values[current_index] = free_text or None
+        expert_id_checklist_values[current_index] = checklist_text or None
 
         # Move to next image
         current_index += 1
@@ -606,13 +742,12 @@ class ImageValidatorGUI:
             # Cancel
             messagebox.showinfo("Cancelled", "Return to setup was cancelled.")
 
-
     # ============================================================
     # SAVE & RETURN TO INIT (INTERNAL)
     # ============================================================
 
     def save_and_return(self):
-        global df, valid_crop_values, expert_id_values, output_path
+        global df, valid_crop_values, expert_id_free_values, expert_id_checklist_values, output_path
 
         if len(df) == 0:
             messagebox.showwarning("No Data", "No data to save.")
@@ -620,7 +755,8 @@ class ImageValidatorGUI:
 
         out_df = df.copy()
         out_df["valid_crop"] = valid_crop_values
-        out_df["expert_id"] = expert_id_values
+        out_df["expert_id_free"] = expert_id_free_values
+        out_df["expert_id_checklist"] = expert_id_checklist_values
 
         try:
             out_df.to_csv(output_path, index=False)
@@ -649,3 +785,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
