@@ -70,4 +70,46 @@ python subsample_expert.py `
 🔐 Optional Arguments
 |Argument	|Description	|Default|
 |--------|-------------|-----------|
-|--seed|	Random seed for reproducibility|	123|
+|--seed|	Random seed for reproducibility|	123|  
+
+
+
+
+# 📊 `validate_results_ui_expert.py` – User Interface to identify crops by experts
+
+This script enables **expert identification** of insect detection data.
+
+
+Prerequisites
+Before running the app, make sure you have:
+
+  - Python 3.8 or higher installed.
+  - Required packages:
+```
+    pip install pandas pillow tk
+  ```
+
+(These are standard in most Python installations, but tk may need to be installed separately on some systems.)
+Input files (see below).
+
+
+ 📁 Required Input Files  
+Place these files in the same folder as your script (validate_results_ui_expert.py):
+|File|	Purpose|
+|----|---------|
+|checklist_syrphids_simple.csv	| Species Checklist of Syrphids for dropdown selection|
+|strata_syrphid_genus_combined_YYYY-MM-DD_HH-MM-SS_partX.csv	|CSV with subsampled image metadata |
+|data_processed | Folder containing the classified output from the post-processing, especially the cropped images |
+
+  
+
+
+🖱️ How to Run the App (in VS Code on Windows)
+
+  - Open your project folder in VS Code.
+  - Open the terminal (View → Terminal in VS Code).
+  - Run the script:
+```
+    python validate_results_ui_expert.py
+```
+
