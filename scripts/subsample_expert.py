@@ -110,7 +110,7 @@ def create_strata_syrphid(
         logger.info(f"Saved strata_syrphid: {filename} ({len(meta_with_crop)} samples)")
 
 
-# === Helper: Create strata_syrphid_genus (per genus, with threshold) ===
+# === Helper: Create strata_syrphid_genus (combined, shuffled, split into 100-row chunks) ===
 def create_strata_syrphid_genus(
     meta_processed: pl.DataFrame,
     meta_sliced: pl.DataFrame,
@@ -122,7 +122,7 @@ def create_strata_syrphid_genus(
     """
     Create strata_syrphid_genus: only rows where bioclip_family == "Syrphidae"
     For each unique bioclip_genus, sample n_per_genus rows with top1_prob_weighted > prob_threshold_genus.
-    Save one CSV per genus.
+    All samples are combined, shuffled, and split into chunks of 100 rows.
     """
     # Filter for Syrphidae
     syrphid_data = meta_processed.filter(pl.col("bioclip_family") == "Syrphidae")
@@ -135,6 +135,9 @@ def create_strata_syrphid_genus(
     # Get unique genera
     unique_genus = syrphid_data["bioclip_genus"].unique()
     logger.info(f"Found {len(unique_genus)} unique genera in Syrphidae: {unique_genus.to_list()}")
+
+    # List to collect all sampled rows
+    all_sampled_rows = []
 
     # Loop over each genus
     for genus in unique_genus:
@@ -157,28 +160,54 @@ def create_strata_syrphid_genus(
         sample_size = min(n_per_genus, len(filtered))
         sampled = filtered.sample(n=sample_size, seed=seed)
 
-        # Join with crop_path
-        meta_with_crop = sampled.join(
-            meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
-            on=["cam_ID", "rec_ID", "track_ID"],
-            how="left"
-        )
+        # Add genus info (optional: for debugging)
+        sampled = sampled.with_columns(pl.lit(genus).alias("sampled_genus"))
 
-        # Generate short filename: first 3 chars of genus + _ + first 3 chars after space
-        parts = genus.split(maxsplit=1)
-        if len(parts) < 2:
-            short_name = genus[:3].lower()
-        else:
-            genus_part = parts[0]
-            species_part = parts[1]
-            short_name = f"{genus_part[:3].lower()}_{species_part[:3].lower()}"
+        # Append to list
+        all_sampled_rows.append(sampled)
 
-        # Save file
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"strata_syrphid_genus_{short_name}_{timestamp}.csv"
-        meta_with_crop.write_csv(output_dir / filename)
-        logger.info(f"Saved strata_syrphid_genus: {filename} ({len(meta_with_crop)} samples)")
+    # Combine all sampled rows
+    if not all_sampled_rows:
+        logger.warning("No data sampled from any genus. Skipping output.")
+        return
 
+    combined = pl.concat(all_sampled_rows, how="vertical")
+
+    # Shuffle the entire dataset (intermix genera)
+    shuffled = combined.sample(n=len(combined), seed=seed)
+
+    # Join with crop_path
+    meta_with_crop = shuffled.join(
+        meta_sliced.select(["cam_ID", "rec_ID", "track_ID", "crop_path"]),
+        on=["cam_ID", "rec_ID", "track_ID"],
+        how="left"
+    )
+
+    # === Split into chunks of 100 rows ===
+    chunk_size = 100
+    total_rows = len(meta_with_crop)
+    num_chunks = (total_rows + chunk_size - 1) // chunk_size  # Ceiling division
+
+    logger.info(f"Splitting {total_rows} rows into {num_chunks} chunks of ~100 rows each.")
+
+    # Save each chunk
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    base_filename = f"strata_syrphid_genus_combined_{timestamp}"
+
+    for i in range(num_chunks):
+        start_idx = i * chunk_size
+        end_idx = min((i + 1) * chunk_size, total_rows)
+        chunk = meta_with_crop.slice(start_idx, end_idx - start_idx)
+
+        part_filename = f"{base_filename}_part{i+1}.csv"
+        chunk.write_csv(output_dir / part_filename)
+        logger.info(f"Saved chunk {i+1}: {part_filename} ({len(chunk)} rows)")
+
+    # Final summary
+    print(f"  - Strata_syrphid_genus: {n_per_genus} samples per genus, threshold {prob_threshold_genus}")
+    print(f"    - Output: {num_chunks} files (100 rows each, last may be smaller):")
+    for i in range(num_chunks):
+        print(f"      - {base_filename}_part{i+1}.csv")
 
 # === Main CLI Entry Point ===
 def main():
@@ -324,7 +353,7 @@ Examples:
         output_dir=output_dir
     )
 
-    # === Create strata_syrphid_genus ===
+    # === Create strata_syrphid_genus (combined, shuffled) ===
     create_strata_syrphid_genus(
         meta_processed=meta_processed,
         meta_sliced=meta_sliced,
@@ -344,6 +373,7 @@ Examples:
     for t in prob_thresholds:
         print(f"    - strata_syrphid_{t:.1f}.csv")
     print(f"  - Strata_syrphid_genus: {n_per_genus} samples per genus, threshold {prob_threshold_genus}")
+    print(f"    - Output: one shuffled file: strata_syrphid_genus_combined_*.csv")
 
 
 if __name__ == "__main__":
